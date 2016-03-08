@@ -168,11 +168,17 @@ class GenomeAccessor(Accessor):
         self.data = None
         
         # try to access the whole genome, using indexing for fast lookup
-        trials = [os.path.join(path,system+'.fa'),os.path.join(path,system+'.fna'),os.path.join(path,system+'.fasta'),os.path.join(path,chrom+".fa")]
-        for fname in trials:
+        trials = [
+            (os.path.join(path,system+'.fa'),'*'),
+            (os.path.join(path,system+'.fna'),'*'),
+            (os.path.join(path,system+'.fasta'),'*'),
+            (os.path.join(path,chrom+".fa"),[chrom+'+',chrom+'-'])
+        ]
+        for fname,strands in trials:
             self.logger.debug("trying to load '%s'" % fname)
             if os.access(fname,os.R_OK):
                 self.data = IndexedFasta(fname,**kwargs)
+                self.covered_strands = strands
                 break
                 
         if not self.data:
@@ -182,9 +188,9 @@ class GenomeAccessor(Accessor):
             self.get_oriented = self.get_dummy
             self.covered_strands = [chrom+'+',chrom+'-']
             self.no_data = True
-        else:
-            # register for all chroms/strands
-            self.covered_strands = [chrom+'+' for chrom in self.data.chrom_stats.keys()] + [chrom+'-' for chrom in self.data.chrom_stats.keys()]
+        #else:
+            ## register for all chroms/strands
+            #self.covered_strands = [chrom+'+' for chrom in self.data.chrom_stats.keys()] + [chrom+'-' for chrom in self.data.chrom_stats.keys()]
 
         # TODO: maybe remove this if not needed
         self.get = self.get_oriented

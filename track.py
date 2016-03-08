@@ -72,7 +72,7 @@ class Track(object):
         self.description = description
         self.auto_flush = auto_flush
         self.last_chrom = ""
-        self.logger = logging.getLogger("byo.Track('%s')" % path)
+        self.logger = logging.getLogger("byo.Track({0} {1} '{2}')".format(system,accessor,path))
         self.system = system
         self.no_data = False
         self.logger.debug("Track(auto_flush=%s)" % (str(auto_flush)))
