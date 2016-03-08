@@ -1,46 +1,47 @@
-from byo.track import Accessor
-from byo import complement, rev_comp
-from logging import debug,warning,error
-
 import os
 import mmap
 import re
+import logging
+from byo.track import Accessor
+from byo import complement, rev_comp
 
-class mmap_fasta(object):
-    def __init__(self,fname):
-        f = file(fname)
-        header = f.readline()
-        row = f.readline()
+#class mmap_fasta(object):
+    #def __init__(self,fname):
+        #f = file(fname)
+        #header = f.readline()
+        #row = f.readline()
 
-        self.ofs = len(header)
-        self.lline = len(row)
-        self.ldata = len(row.strip())
-        self.skip = self.lline-self.ldata
-        self.skip_char = row[self.ldata:]
-        #print "SKIP",self.skip,self.skip_char
-        self.mmap = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
+        #self.ofs = len(header)
+        #self.lline = len(row)
+        #self.ldata = len(row.strip())
+        #self.skip = self.lline-self.ldata
+        #self.skip_char = row[self.ldata:]
 
-    def __getslice__(self,start,end):
-        l_start = start / self.ldata
-        l_end = end / self.ldata
-        #print "lines",l_start,l_end
-        ofs_start = l_start * self.skip + start + self.ofs
-        ofs_end = l_end * self.skip + end + self.ofs
-        #print "ofs",ofs_start,ofs_end
+        #self.mmap = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
+
+    #def __getslice__(self,start,end):
+        #l_start = start / self.ldata
+        #l_end = end / self.ldata
+
+        #ofs_start = l_start * self.skip + start + self.ofs
+        #ofs_end = l_end * self.skip + end + self.ofs
         
-        s = self.mmap[ofs_start:ofs_end].replace(self.skip_char,"")
-        L = end-start
-        if len(s) == L:
-            return s
-        else:
-            return s+"N"*(L-len(s))
-        return 
+        #s = self.mmap[ofs_start:ofs_end].replace(self.skip_char,"")
+        #L = end-start
+        #if len(s) == L:
+            #return s
+        #else:
+            #return s+"N"*(L-len(s))
+        #return 
 
-class indexed_fasta(object):
+
+class IndexedFasta(object):
     def __init__(self,fname,split_chrom="",**kwargs):
+        self.logger = logging.getLogger('byo.io.IndexedFasta')
         self.fname = fname
         self.chrom_stats = {}
         self.split_chrom = split_chrom
+
         # try to load index
         ipath = fname + '.byo_index'
         if os.access(ipath,os.R_OK):
@@ -52,8 +53,9 @@ class indexed_fasta(object):
         f = file(fname)
         self.mmap = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
 
+
     def index(self):
-        debug("# indexed_fasta.index('{self.fname}') split_chrom={self.split_chrom}".format(**locals()))
+        self.logger.debug("# index('{self.fname}') split_chrom={self.split_chrom}".format(**locals()))
 
         ofs = 0
         f = file(self.fname)
@@ -89,8 +91,9 @@ class indexed_fasta(object):
                         
         f.close()
 
+
     def store_index(self,ipath):
-        debug("# indexed_fasta.store_index('%s')" % ipath)
+        self.logger.info("# store_index('%s')" % ipath)
         
         # write to tmp-file first and in the end rename in order to have this atomic 
         # otherwise parallel building of the same index may screw it up.
@@ -115,12 +118,13 @@ class indexed_fasta(object):
         
 
     def load_index(self,ipath):
-        debug("# indexed_fasta.load_index('%s')" % ipath)
+        self.logger.info("# load_index('%s')" % ipath)
         self.chrom_stats = {}
         for line in file(ipath):
             chrom,ofs,ldata,skip,skipchar,size = line.rstrip().split('\t')
             self.chrom_stats[chrom] = (int(ofs),int(ldata),int(skip),skipchar[1:-1].decode('string_escape'),int(size))
         
+    
     def get_data(self,chrom,start,end,sense):
         if not self.chrom_stats:
             self.index()
@@ -155,32 +159,25 @@ class indexed_fasta(object):
 
         
 class GenomeAccessor(Accessor):
-    def __init__(self,path,chrom,sense,system='hg19',**kwargs):
-        #import logging
-        #logging.basicConfig(level=logging.DEBUG)
-
+    def __init__(self,path,chrom,sense,system=None,**kwargs):
         super(GenomeAccessor,self).__init__(path,chrom,sense,system=system,**kwargs)
-        debug("# GenomeAccessor mmap: Loading genomic sequence for chromosome %s from '%s'" % (chrom,path))
+        self.logger = logging.getLogger('byo.io.GenomeAccessor')
+        self.logger.debug("mmap'ing genomic sequence for chromosome %s from '%s'" % (chrom,path))
 
         self.system = system
         self.data = None
         
-        # TODO: make the indexing record also the SIZE of the chromosome, so we can get rid of this lookup
-        # DONE. now handled by the underlying indexed_fasta object
-        #import importlib
-        #self.chr_sizes = importlib.import_module("byo.systems.{sys}".format(sys=system)).chr_sizes
-        
         # try to access the whole genome, using indexing for fast lookup
-        trials = [os.path.join(path,system+'.fna'),os.path.join(path,system+'.fa'),os.path.join(path,chrom+".fa")]
+        trials = [os.path.join(path,system+'.fa'),os.path.join(path,system+'.fna'),os.path.join(path,system+'.fasta'),os.path.join(path,chrom+".fa")]
         for fname in trials:
-            debug("trying to load '%s'" % fname)
+            self.logger.debug("trying to load '%s'" % fname)
             if os.access(fname,os.R_OK):
-                self.data = indexed_fasta(fname,**kwargs)
+                self.data = IndexedFasta(fname,**kwargs)
                 break
                 
         if not self.data:
             # all fails: return Ns only
-            warning("Could not access any of '%s'. Switching to dummy mode (only Ns)" % str(trials))
+            self.logger.warning("Could not access any of '%s'. Switching to dummy mode (only Ns)" % str(trials))
             self.get_data = self.get_dummy
             self.get_oriented = self.get_dummy
             self.covered_strands = [chrom+'+',chrom+'-']
@@ -192,6 +189,7 @@ class GenomeAccessor(Accessor):
         # TODO: maybe remove this if not needed
         self.get = self.get_oriented
 
+
     def load_indexed(self,path):
         ipath = path+'.index'
         if not os.access(ipath,os.R_OK):
@@ -201,26 +199,15 @@ class GenomeAccessor(Accessor):
 
         self.chrom_ofs = index.chrom_ofs
         
+
     def get_data(self,chrom,start,end,sense):
-        #print "indexed_fasta.get_data('%s',%d,%d,%s)" % (chrom,start,end,sense)
-        #L = self.chr_sizes[chrom]
-        #if start < 0 or end > L:
-            ## query violates chromosome bounds. Try to handle gracefully by padding with Ns
-            ##print "flaky query: start=%d end=%d L=%d" % (start,end,L)
-            #pad_left = -min(start,0)
-            #pad_right = -min(L-end,0)
-            ##print "pad_left=%d pad_right=%d" % (pad_left,pad_right)
-            #insert = self.data.get_data(chrom,max(0,start),min(end,L),"+")
-            ##print len(insert),max(0,start),min(end,L),min(end,L)-max(0,start)
-            #seq = ("N"*pad_left) + insert + ("N"*pad_right)
-            ##print seq
-        #else:
         seq = self.data.get_data(chrom,start,end,"+")
             
         if sense == "-":
             seq = complement(seq)
 
         return seq
+
 
     def get_dummy(self,chrom,start,end,sense):
         return "N"*int(end-start)
@@ -229,11 +216,10 @@ class GenomeAccessor(Accessor):
 
 class MSFAccessor(Accessor):
     def __init__(self,path,chrom,sense,system='hg19',offset=0,suffix='.maf.stitched.cmpl.repeats_lc',**kwargs):
-        #import logging
-        #logging.basicConfig(level=logging.DEBUG)
-
         super(MSFAccessor,self).__init__(path,chrom,sense,system=system,**kwargs)
-        debug("# MSFAccessor mmap: Loading aligned, stitched genomic sequences for chromosome %s from '%s' offset=%d" % (chrom,path,offset))
+
+        self.logger = logging.getLogger('byo.io.MSFAccessor')
+        self.logger.debug("mmap'ing aligned, stitched genomic sequences for chromosome %s from '%s' offset=%d" % (chrom,path,offset))
 
         self.system = system
         self.data = None
@@ -242,9 +228,9 @@ class MSFAccessor(Accessor):
         # try to access the whole genome, using indexing for fast lookup
         trials = [os.path.join(path,chrom+suffix)]
         for fname in trials:
-            debug("trying to load '%s'" % fname)
+            self.logger.debug("trying to load '%s'" % fname)
             if os.access(fname,os.R_OK):
-                self.data = indexed_fasta(fname,**kwargs)
+                self.data = IndexedFasta(fname,**kwargs)
                 self.species = sorted(self.data.chrom_stats.keys())
                 self.extra_data = dict(species=self.species)
                 self.covered_strands = [chrom+'+',chrom+'-']
@@ -259,7 +245,7 @@ class MSFAccessor(Accessor):
                 
         if not self.data:
             # all fails: return Ns only
-            warning("Could not access any of '%s'. Switching to dummy mode (only Ns)" % str(trials))
+            self.logger.warning("Could not access any of '%s'. Switching to dummy mode (only Ns)" % str(trials))
             self.get_data = self.get_dummy
             self.get_oriented = self.get_dummy
             self.covered_strands = [chrom+'+',chrom+'-']
@@ -271,6 +257,7 @@ class MSFAccessor(Accessor):
         # TODO: maybe remove this if not needed
         self.get = self.get_oriented
 
+
     def load_indexed(self,path):
         ipath = path+'.index'
         if not os.access(ipath,os.R_OK):
@@ -280,6 +267,7 @@ class MSFAccessor(Accessor):
 
         self.chrom_ofs = index.chrom_ofs
         
+
     def get_data(self,chrom,start,end,sense,species=[]):
         start += self.offset
         end += self.offset
@@ -288,11 +276,12 @@ class MSFAccessor(Accessor):
             species = self.species
         if start < 0 or end < 0:
             return [self.get_dummy(spc,start,end,sense) for spc in species]
-        #UCSC convention: start with 1, end is inclusive
+        
         if sense == "+":
             return [self.data.get_data(spc,start,end,sense).replace('-','N') for spc in species]
         else:
             return [complement(self.data.get_data(spc,start,end,'+').replace('-','N')) for spc in species]
+
 
     def get_oriented(self,chrom,start,end,sense,species=[]):
         start += self.offset
@@ -302,7 +291,7 @@ class MSFAccessor(Accessor):
             species = self.species
         if start < 0 or end < 0:
             return [self.get_dummy(spc,start,end,sense) for spc in species]
-        #UCSC convention: start with 1, end is inclusive
+        
         if sense == "+":
             return [self.data.get_data(spc,start,end,sense).replace('-','N') for spc in species]
         else:
@@ -317,8 +306,8 @@ class MSFAccessor(Accessor):
 
         
 if __name__ == "__main__":
-    #i = indexed_fasta('/data/BIO2/pcp/systems/hg19/genome/hg19.fna')
-    i = indexed_fasta('/data/BIO2/pcp/systems/ce6/genome/ce6.fna')
+    #i = IndexedFasta('/data/BIO2/pcp/systems/hg19/genome/hg19.fna')
+    i = IndexedFasta('/data/BIO2/pcp/systems/ce6/genome/ce6.fna')
     #print i.chrom_stats
     print i.get_data('chrIV',0,100,'+')
     #print i.chrom_stats

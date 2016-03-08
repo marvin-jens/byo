@@ -1,6 +1,5 @@
 from byo.track import Accessor
-from logging import debug,warning,error,info
-
+import logging
 import os
 import numpy
 
@@ -24,8 +23,10 @@ class ArrayAccessor(Accessor):
     supports_write = True
 
     def __init__(self,path,chrom,sense,sense_specific=True,dtype=numpy.float32,mode="r",dim=1,ext=".bin",**kwargs):
-        debug("# ArrayAccessor mmap: Loading '%s' array data for chromosome %s%s from '%s'" % (str(dtype),chrom,sense,path))
         super(ArrayAccessor,self).__init__(path,chrom,sense,sense_specific=sense_specific,**kwargs)
+        self.logger = logging.getLogger('byo.io.ArrayAccessor')
+        self.logger.debug("mmap'ing '%s' array data for chromosome %s%s from '%s'" % (str(dtype),chrom,sense,path))        
+
         # in case we havent been given the actual type, just its name: retrieve it
         if type(dtype) == str:
             dtype = getattr(numpy,dtype)
@@ -47,7 +48,7 @@ class ArrayAccessor(Accessor):
             try:
                 self.data = numpy.memmap(filename=fname,dtype=dtype,mode=mode_trans[mode])
             except IOError:
-                warning("Could not access '%s'. Switching to dummy mode (only zeros)" % fname)
+                self.logger.warning("Could not access '%s'. Switching to dummy mode (only zeros)" % fname)
                 self.data = ZeroSource(self.dtype)
                 #self.get_data = self.get_dummy
         else:
@@ -60,10 +61,10 @@ class ArrayAccessor(Accessor):
             try:
                 size = system.chr_sizes[chrom]
             except KeyError:
-                warning("Unknown chromosome '%s'. Switching to (read-only) dummy mode (only zeros)" % fname)
+                self.logger.warning("Unknown chromosome '%s'. Switching to (read-only) dummy mode (only zeros)" % fname)
                 self.data = ZeroSource(self.dtype)
             else:
-                info("opening '%s' (size=%d) for write-access" % (fname,size))
+                self.logger.info("opening '%s' (size=%d) for write-access" % (fname,size))
                 self.data = numpy.memmap(filename=fname,dtype=dtype,mode=mode_trans[mode],shape=size)
 
     def get_sum(self,chrom,start,end,sense,**kwargs):

@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-from logging import getLogger
+import logging
 import os
 
 
 class Accessor(object):
     supports_write = False
 
-    def __init__(self,path,chrom,sense,sense_specific=False,**kwargs):
+    def __init__(self,path,chrom,sense,sense_specific=False,system=None,**kwargs):
+        self.system = system
         if sense_specific:
             self.covered_strands = [chrom+sense]
         else:
@@ -60,7 +61,7 @@ class Track(object):
     See io/track_accessors.py for more examples.
     """
 
-    def __init__(self,path,accessor,sense_specific=True,description="unlabeled track",system="hg18",dim=1,auto_flush=False,mode="r",**kwargs):
+    def __init__(self,path,accessor,sense_specific=True,description="unlabeled track",system=None,dim=1,auto_flush=False,mode="r",**kwargs):
         self.path = path
         self.mode = mode
         self.acc_cache = {}
@@ -71,7 +72,7 @@ class Track(object):
         self.description = description
         self.auto_flush = auto_flush
         self.last_chrom = ""
-        self.logger = getLogger("Track('%s')" % path)
+        self.logger = logging.getLogger("byo.Track('%s')" % path)
         self.system = system
         self.no_data = False
         self.logger.debug("Track(auto_flush=%s)" % (str(auto_flush)))
@@ -198,7 +199,7 @@ def load_track(path,default_accessor="ArrayAccessor",**kwargs):
     from ConfigParser import SafeConfigParser as ConfigParser, NoSectionError
     import os
     import byo.io.track_accessors as track_accessors
-    if path.endswith('.fa') or path.endswith('.fna'):
+    if path.endswith('.fa') or path.endswith('.fna') or path.endswith('.fasta'):
         system,ext = os.path.splitext(os.path.basename(path))
         return Track(os.path.dirname(path),track_accessors.GenomeAccessor,system=system,**kwargs)
     elif path.endswith(".bam") and os.path.isfile(path):
