@@ -434,16 +434,19 @@ class CircRNA(Transcript):
 
     def cut(self,start,end,outer=False):
         before,inside,after = self.intersect(['before','cut','after'],start,end,expand=False)
+        new_name = "{self.name}_cut_{start}-{end}".format(self=self, start=start, end=end)
+        
         if outer or (start > end and self.sense == '+') or (start < end and self.sense == '-'):
             # circRNA wrap-around!
             new_chain = before + after
-            new_name = "{self.name}_cut_{start}-{end}".format(self=self, start=start, end=end)
             outside = CircRNA(new_name, new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
             outside.wraparound = [before.spliced_length,after.spliced_length][::outside.dir]
             outside.set_origin(start)
 
             return outside
         else:
+            new_chain = inside
+            inside = CircRNA(new_name, new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
             return inside
 
     def map_from_spliced(self, pos):
@@ -535,8 +538,8 @@ class CircRNA(Transcript):
         if not ranked_orfs:
             return EmptyChain
 
-        for o in ranked_orfs:
-            print "  ",o,self.map_from_spliced(o[1]),self.map_from_spliced(o[2])
+        #for o in ranked_orfs:
+            #print "  ",o,self.map_from_spliced(o[1]),self.map_from_spliced(o[2])
             
         l,start,stop,orf_attrs,aa = ranked_orfs[0]
         g_start = self.map_from_spliced(start)
