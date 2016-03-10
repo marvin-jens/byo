@@ -55,7 +55,7 @@ class IndexedFasta(object):
 
 
     def index(self):
-        self.logger.debug("# index('{self.fname}') split_chrom={self.split_chrom}".format(**locals()))
+        self.logger.debug("index('{self.fname}') split_chrom={self.split_chrom}".format(**locals()))
 
         ofs = 0
         f = file(self.fname)
@@ -93,7 +93,7 @@ class IndexedFasta(object):
 
 
     def store_index(self,ipath):
-        self.logger.info("# store_index('%s')" % ipath)
+        self.logger.info("store_index('%s')" % ipath)
         
         # write to tmp-file first and in the end rename in order to have this atomic 
         # otherwise parallel building of the same index may screw it up.
@@ -118,7 +118,7 @@ class IndexedFasta(object):
         
 
     def load_index(self,ipath):
-        self.logger.info("# load_index('%s')" % ipath)
+        self.logger.info("load_index('%s')" % ipath)
         self.chrom_stats = {}
         for line in file(ipath):
             chrom,ofs,ldata,skip,skipchar,size = line.rstrip().split('\t')
