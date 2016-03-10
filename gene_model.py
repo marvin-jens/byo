@@ -72,15 +72,7 @@ class ExonChain(object):
         if not (self.exon_starts[nl] <= pos <= self.exon_ends[nl]):
             raise ValueError("%d does not lie within any exon bounds" % pos)
 
-        mapped = self.ofs + self.dir * (pos - self.exon_starts[nl] + self.exon_txstarts[nl])
-        if hasattr(self,"wraparound"):
-            left,right = self.wraparound
-            if mapped < left:
-                mapped += right
-            else:
-                mapped -= left
-
-        return mapped
+        return self.ofs + self.dir * (pos - self.exon_starts[nl] + self.exon_txstarts[nl])
 
     def map_block_from_spliced(self,start,end):
         x,y = self.map_from_spliced(start),self.map_from_spliced(end)
@@ -222,15 +214,15 @@ class ExonChain(object):
 
     def cut(self,start,end,outer=False):
         before,chain,after = self.intersect(['before','cut','after'],start,end,expand=False)
-        if outer or (start > end):
-            outside = before + after
-            if outside.sense == '+':
-                outside.wraparound = after.spliced_length
-            else:
-                outside.wraparound = before.spliced_length
-            return outside
-        else:
-            return chain
+        #if outer or (start > end):
+            #outside = before + after
+            #if outside.sense == '+':
+                #outside.wraparound = after.spliced_length
+            #else:
+                #outside.wraparound = before.spliced_length
+            #return outside
+        #else:
+        return chain
     
     #def cut_tx(self,tx_start,tx_end,outer=False):
         #start, end = self.map_block_from_spliced(tx_start, tx_end)
@@ -263,7 +255,7 @@ class ExonChain(object):
     # add some python magic to make things smooth
     def __str__(self):
         exonlist = ",".join(map(str,self.exon_bounds))
-        return "%s %s %d %d exons: %s" % (self.chrom,self.sense,self.start,self.end,exonlist)
+        return "{self.chrom}:{self.start}-{self.end}{self.sense} spliced_lenght={self.spliced_length} exons: {exonlist}".format(self=self, exonlist=exonlist)
 
     def __len__(self):
         """
@@ -404,6 +396,9 @@ class CircRNA(Transcript):
         self.name = name
         self.description = description
 
+        self.origin = self.start
+        self.origin_spliced = 0
+
         cds_start,cds_end = cds
         if cds_start == cds_end:
             self.UTR5 = None
@@ -432,18 +427,52 @@ class CircRNA(Transcript):
                 self.CDS.start_codon = cds_end
                 self.CDS.stop_codon = cds_start
 
+    def set_origin(self,pos):
+        self.origin = pos
+        self.origin_spliced = super(CircRNA,self).map_to_spliced(pos)
+        #print "ORIGIN_SPLICED",pos,"->",self.origin_spliced
+
     def cut(self,start,end,outer=False):
         before,inside,after = self.intersect(['before','cut','after'],start,end,expand=False)
-        if outer or (start > end):
+        if outer or (start > end and self.sense == '+') or (start < end and self.sense == '-'):
             # circRNA wrap-around!
-            outside = before + after
+            new_chain = before + after
+            new_name = "{self.name}_cut_{start}-{end}".format(self=self, start=start, end=end)
+            outside = CircRNA(new_name, new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
             outside.wraparound = [before.spliced_length,after.spliced_length][::outside.dir]
+            outside.set_origin(start)
+
             return outside
         else:
             return inside
 
     def map_from_spliced(self, pos):
-        return super(CircRNA,self).map_from_spliced(pos % self.spliced_length)
+        return super(CircRNA,self).map_from_spliced( (pos - self.origin_spliced) % self.spliced_length)
+    
+    def map_to_spliced(self, pos):
+        return ( super(CircRNA,self).map_to_spliced( pos ) - self.origin_spliced ) % self.spliced_length
+
+    @property
+    def spliced_sequence(self):
+        seq = super(CircRNA,self).spliced_sequence
+        return seq[self.origin_spliced:] + seq[:self.origin_spliced]
+
+    def __str__(self):
+        exonstarts = ",".join([str(s) for s in self.exon_starts])
+        exonends = ",".join([str(e) for e in self.exon_ends])
+        #exonframes = ",".join([str(f) for f in self.exon_frames])
+        # TODO: fix exon-frames
+        exonframes = ",".join(["-1" for e in self.exon_ends])
+
+        if self.CDS:
+            cds_start = self.CDS.start
+            cds_end = self.CDS.end
+        else:
+            cds_start = self.end
+            cds_end = self.end
+            
+        out = (-1, self.name, self.chrom, self.sense, self.start, self.end,cds_start, cds_end, self.exon_count, exonstarts, exonends, str(self.score), self.gene_id, self.origin, self.origin_spliced, exonframes)
+        return "\t".join([str(o) for o in out])
     
     @property
     def ORF(self):
@@ -505,7 +534,10 @@ class CircRNA(Transcript):
         ranked_orfs = sorted(list(self.all_cORFs()), key = score, reverse=True)
         if not ranked_orfs:
             return EmptyChain
-        
+
+        for o in ranked_orfs:
+            print "  ",o,self.map_from_spliced(o[1]),self.map_from_spliced(o[2])
+            
         l,start,stop,orf_attrs,aa = ranked_orfs[0]
         g_start = self.map_from_spliced(start)
         g_stop = self.map_from_spliced(stop)
@@ -521,6 +553,7 @@ class CircRNA(Transcript):
 
         CDS.aa = aa
         CDS.orf_attrs = orf_attrs
+
         return CDS
 
     
@@ -589,10 +622,11 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thr
         yield tx
 
 if __name__ == "__main__":
-    #for tx in transcripts_from_UCSC():
-    for tx in transcripts_from_GTF("/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/stdout.combined.gtf"):
-        #print tx.exon_count
-        pass
+        
+    ##for tx in transcripts_from_UCSC():
+    #for tx in transcripts_from_GTF("/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/stdout.combined.gtf"):
+        ##print tx.exon_count
+        #pass
 
     #from pprint import pprint
     #E = ExonChain("test","chr1","-",[10,100,300],[30,150,400])
