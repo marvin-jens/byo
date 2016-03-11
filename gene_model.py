@@ -257,6 +257,13 @@ class ExonChain(object):
         exonlist = ",".join(map(str,self.exon_bounds))
         return "{self.chrom}:{self.start}-{self.end}{self.sense} spliced_lenght={self.spliced_length} exons: {exonlist}".format(self=self, exonlist=exonlist)
 
+    def bed12(self,color="255,0,0"):
+        block_sizes = [str(e-s) for s,e in self.exon_bounds]
+        block_starts = [str(s-self.start) for s in self.exon_starts]
+        
+        cols = [self.chrom,self.start,self.end,self.name,getattr(self,"score",0),self.sense,self.CDS.start,self.CDS.end,color,self.exon_count,",".join(block_sizes),",".join(block_starts)]
+        return "\t".join([str(c) for c in cols])
+        
     def __len__(self):
         """
         zero-length ExonChains will be False in truth value testing.
@@ -439,14 +446,15 @@ class CircRNA(Transcript):
         if outer or (start > end and self.sense == '+') or (start < end and self.sense == '-'):
             # circRNA wrap-around!
             new_chain = before + after
-            outside = CircRNA(new_name, new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
+            outside = CircRNA(new_name+"_outer", new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
             outside.wraparound = [before.spliced_length,after.spliced_length][::outside.dir]
             outside.set_origin(start)
 
             return outside
         else:
             new_chain = inside
-            inside = CircRNA(new_name, new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
+            inside = CircRNA(new_name+"_inner", new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
+
             return inside
 
     def map_from_spliced(self, pos):
