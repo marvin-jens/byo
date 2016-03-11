@@ -201,11 +201,35 @@ class ExonChain(object):
                 # expand the exon-bound to incorporate the end
                 chain_ends[-1] = end
 
+        def remove_empty(starts,ends):
+            keep_starts = []
+            keep_ends = []
+            for s,e in zip(starts,ends):
+                if s != e:
+                    keep_starts.append(s)
+                    keep_ends.append(e)
+            return keep_starts,keep_ends
+        
+        before_starts, before_ends = remove_empty(before_starts,before_ends)
+        chain_starts, chain_ends = remove_empty(chain_starts,chain_ends)
+        after_starts, after_ends = remove_empty(after_starts,after_ends)
+        
         #print self.system
         #print "CHAIN",chain_starts,chain_ends
-        chain = ExonChain(self.chrom,self.sense,chain_starts,chain_ends,system=self.system)
-        before = ExonChain(self.chrom,self.sense,before_starts,before_ends,system=self.system)
-        after = ExonChain(self.chrom,self.sense,after_starts,after_ends,system=self.system)
+        if chain_starts:
+            chain = ExonChain(self.chrom,self.sense,chain_starts,chain_ends,system=self.system)
+        else:
+            chain = EmptyChain
+
+        if before_starts:
+            before = ExonChain(self.chrom,self.sense,before_starts,before_ends,system=self.system)
+        else:
+            before = EmptyChain
+            
+        if after_starts:
+            after = ExonChain(self.chrom,self.sense,after_starts,after_ends,system=self.system)
+        else:
+            after = EmptyChain
 
         if self.sense == "+":
             return before,chain,after
