@@ -63,3 +63,27 @@ def find_ORF(seq,len_thresh=30):
     else:
         L,ORF,start,end = orfs[0]
         return ORF,start,end
+
+def trypsinize(aa,minlen=6,undigested=2):
+    """
+    in-silico digest the amino acid sequence with trypsin, cutting after R or K.
+    can allow for arbitrary number of undigested residues to simulate partial
+    digestion (default=up to 2).
+    """
+    import re
+    bps = sorted(set([-1,] + [M.span()[0] for M in re.finditer(r'(R|K|r|k)',aa)] + [len(aa)-1,]))
+
+    from itertools import tee, izip
+    def n_wise(iterable,n):
+        "s -> (s0,sn), (s1,s1+n), (s2, s2+n), ..."
+        a, b = tee(iterable)
+        for i in range(n):
+            next(b, None)
+        return izip(a, b)
+    
+    for j in range(1,undigested+2):
+        #print "undigested",j
+        for bp1,bp2 in n_wise(bps,j):
+            pep = aa[bp1+1:bp2+1]
+            if len(pep.replace('*','')) >= minlen:
+                yield pep
