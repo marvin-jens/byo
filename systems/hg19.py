@@ -9,16 +9,28 @@ from logging import debug,warning,error,info
 from numpy import uint32, float32
 
 root = byo.config.system_root
+name = "hg19"
+genome = Track(os.path.join(root,"reference",name),GenomeAccessor,system=name)
 
-genome = Track(os.path.join(root,"reference","hg19"),GenomeAccessor,system='hg19')
+class LazyTranscriptLoader(object):
+    def __init__(self,system = None):
+        self.transcripts = None
+        self.system = system
 
-def get_annotation_track(path=os.path.join(root,"annotation","hg19","compiled"),accessor=AnnotationAccessor,**kwargs):
+    def __getitem__(self,txname):
+        if not self.transcripts:
+            self.transcripts = self.system.get_refGenes()
+        return self.transcripts[txname]
+
+transcript_models = LazyTranscriptLoader(system = sys.modules[__name__])
+
+def get_annotation_track(path=os.path.join(root,"annotation",name,"compiled"),accessor=AnnotationAccessor,**kwargs):
     return Track(path,accessor,**kwargs)
 
 def get_refGenes(path = [
-    os.path.join(root,'annotation','hg19','wgEncodeGencodeBasicV17.ucsc'),
-    #os.path.join(root,'annotation','hg19','refGene.ucsc'),
-    #os.path.join(root,'annotation','hg19','transcript.noncoding.lincRNA.ucsc_lincrna_track.ucsc')
+    os.path.join(root,'annotation',name,'wgEncodeGencodeBasicV17.ucsc'),
+    #os.path.join(root,'annotation',name,'refGene.ucsc'),
+    #os.path.join(root,'annotation',name,'transcript.noncoding.lincRNA.ucsc_lincrna_track.ucsc')
     ] ):
 
     from byo.gene_model import transcripts_from_UCSC
@@ -33,7 +45,7 @@ def get_refGenes(path = [
 
 chr_sizes = {}
 try:
-    for c in Importer(os.path.join(root,'reference','hg19',"chrom.sizes"),descr="## chrom:str \t size:int"):
+    for c in Importer(os.path.join(root,'reference',name,"chrom.sizes"),descr="## chrom:str \t size:int"):
         chr_sizes[c.chrom] = c.size
 except IOError:
     loaded = False

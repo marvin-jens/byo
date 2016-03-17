@@ -5,22 +5,36 @@ from byo.io.lazytables import NamedTupleImporter as Importer
 from byo.io.lazytables import LazyImporter
 import byo.config
 import byo
-import os,re
+import os,re,sys
 
 from logging import debug,warning,error,info
 
+name = "dm3"
 root =  byo.config.system_root
 
-genome = Track(os.path.join(root,"dm3","genome"),GenomeAccessor,system='dm3')
+genome = Track(os.path.join(root,name,"genome"),GenomeAccessor,system='dm3')
 
-def get_annotation_track(path=os.path.join(root,"dm3","system_annotation"),**kwargs):
+def get_annotation_track(path=os.path.join(root,name,"system_annotation"),**kwargs):
     return Track(path,AnnotationAccessor,**kwargs)
 
+
+class LazyTranscriptLoader(object):
+    def __init__(self,system = None):
+        self.transcripts = None
+        self.system = system
+
+    def __getitem__(self,txname):
+        if not self.transcripts:
+            self.transcripts = self.system.get_refGenes()
+        return self.transcripts[txname]
+
+transcript_models = LazyTranscriptLoader(system = sys.modules[__name__])
+
 #def get_refGenes(path = os.path.join(root,'annotation','flyBaseGene.ucsc')):
-def get_refGenes(path = os.path.join(root,"dm3",'annotation','ensGene.ucsc')):
+def get_refGenes(path = os.path.join(root,name,'annotation','ensGene.ucsc')):
     from byo.gene_model import transcripts_from_UCSC
     gene_names = {}
-    for l in file(os.path.join(root,"dm3",'annotation','gene_names')):
+    for l in file(os.path.join(root,name,'annotation','gene_names')):
         k,v = l.split('\t')
         gene_names[k] = v.rstrip()
 
@@ -29,7 +43,7 @@ def get_refGenes(path = os.path.join(root,"dm3",'annotation','ensGene.ucsc')):
     
 chr_sizes = {}
 try:
-    for c in Importer(os.path.join(root,"dm3","chrom.sizes"),skip=[2],descr="## chrom:str \t size:int \t fileName:str"):
+    for c in Importer(os.path.join(root,name,"chrom.sizes"),skip=[2],descr="## chrom:str \t size:int \t fileName:str"):
         chr_sizes[c.chrom] = c.size
 except IOError:
     loaded = False

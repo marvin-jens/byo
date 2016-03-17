@@ -69,6 +69,8 @@ class ExonChain(object):
 
     def map_to_spliced(self,pos):
         nl = min(max(0,bisect_left(self.exon_ends,pos)),self.exon_count-1)
+        #print nl, self.exon_count
+        #print self.exon_starts, pos, self.exon_ends
         if not (self.exon_starts[nl] <= pos <= self.exon_ends[nl]):
             raise ValueError("%d does not lie within any exon bounds" % pos)
 
@@ -219,17 +221,17 @@ class ExonChain(object):
         if chain_starts:
             chain = ExonChain(self.chrom,self.sense,chain_starts,chain_ends,system=self.system)
         else:
-            chain = EmptyChain
+            chain = self.EmptyChain()
 
         if before_starts:
             before = ExonChain(self.chrom,self.sense,before_starts,before_ends,system=self.system)
         else:
-            before = EmptyChain
+            before = self.EmptyChain()
             
         if after_starts:
             after = ExonChain(self.chrom,self.sense,after_starts,after_ends,system=self.system)
         else:
-            after = EmptyChain
+            after = self.EmptyChain()
 
         if self.sense == "+":
             return before,chain,after
@@ -238,19 +240,8 @@ class ExonChain(object):
 
     def cut(self,start,end,outer=False):
         before,chain,after = self.intersect(['before','cut','after'],start,end,expand=False)
-        #if outer or (start > end):
-            #outside = before + after
-            #if outside.sense == '+':
-                #outside.wraparound = after.spliced_length
-            #else:
-                #outside.wraparound = before.spliced_length
-            #return outside
-        #else:
         return chain
     
-    #def cut_tx(self,tx_start,tx_end,outer=False):
-        #start, end = self.map_block_from_spliced(tx_start, tx_end)
-        #return self.cut(start,end,outer=outer)
         
     def __add__(self,other):
         """
@@ -263,6 +254,10 @@ class ExonChain(object):
         else:
             A,B = other,self
 
+        if not A:
+            return B
+        if not B:
+            return A
         #print "# concatenating exon chains",A,B
         assert A.chrom == B.chrom
         assert A.sense == B.sense
@@ -279,7 +274,7 @@ class ExonChain(object):
     # add some python magic to make things smooth
     def __str__(self):
         exonlist = ",".join(map(str,self.exon_bounds))
-        return "{self.chrom}:{self.start}-{self.end}{self.sense} spliced_lenght={self.spliced_length} exons: {exonlist}".format(self=self, exonlist=exonlist)
+        return "{self.chrom}:{self.start}-{self.end}{self.sense} spliced_length={self.spliced_length} exons: {exonlist}".format(self=self, exonlist=exonlist)
 
     def bed12(self,color="255,0,0"):
         block_sizes = [str(e-s) for s,e in self.exon_bounds]
@@ -291,7 +286,7 @@ class ExonChain(object):
     def __len__(self):
         """
         zero-length ExonChains will be False in truth value testing.
-        so stuff like: "if 5UTR" can work.
+        so stuff like: "if tx.UTR5" can work.
         """
         return self.spliced_length
 
@@ -299,13 +294,16 @@ class ExonChain(object):
         """check if the coordinate falls into an exon"""
         try:
             x = self.map_to_spliced(pos)
-        except AssertionError:
+        except ValueError:
             return False
         else:
             return True
 
+    def EmptyChain(self):
+        return ExonChain(self.chrom, self.sense, [0], [0], system=self.system)
+
 Locus = namedtuple("Locus","name, chrom, sense, start, end, category")
-EmptyChain = ExonChain("N/A",'+',[0],[0],system=None)
+
 
 class Transcript(ExonChain):
     def __init__(self,name,chrom,sense,exon_starts,exon_ends,cds,score=0,system=None,description={}):
@@ -381,12 +379,25 @@ class Transcript(ExonChain):
 
     @property
     def gene_id(self):
-        gene_id = getattr(self,"name2",None)
+        gene_id = getattr(self, "name2", None)
         if not gene_id:
-            gene_id = self.description.get("gene_id",self.description.get("name2",self.name))
+            gene_id = self.description.get("gene_id", self.description.get("name2", self.name))
         if not gene_id:
             return self.name
         return gene_id
+
+    def get_uORFs(self, min_len = 2):
+        """
+        Find all possible upstream open reading frames inside the 5'UTR.
+        if min_len=2 (default) this will even report 'M*'
+        """
+        from byo.protein import all_orfs
+        if not self.UTR5:
+            return []
+    
+        seq = self.UTR5.spliced_sequence.upper()
+        u_orfs = sorted([ (len(orf),start,end,orf) for (start,end,orf) in all_orfs(seq,need_stop=True) if len(orf) >= min_len],reverse=True)
+        return u_orfs
 
     @property
     def ORF(self):
@@ -470,9 +481,16 @@ class CircRNA(Transcript):
         if outer or (start > end and self.sense == '+') or (start < end and self.sense == '-'):
             # circRNA wrap-around!
             new_chain = before + after
+            
             outside = CircRNA(new_name+"_outer", new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
             outside.wraparound = [before.spliced_length,after.spliced_length][::outside.dir]
-            outside.set_origin(start)
+            try:
+                outside.set_origin(start)
+            except ValueError:
+                # coordinate hit the boundary of an exon that's not in the cut
+                # falling back to the default (start of first exon) should be 
+                # correct in this case
+                pass
 
             return outside
         else:
@@ -517,6 +535,9 @@ class CircRNA(Transcript):
             return protein.translate_aa(self.CDS.spliced_sequence)
 
     def all_cORFs(self,ofs=None,min_len=20,max_uncalled=0.1):
+        if not self.spliced_length:
+            return
+        
         seq = self.spliced_sequence * 4
         L = self.spliced_length
 
@@ -568,7 +589,7 @@ class CircRNA(Transcript):
         
         ranked_orfs = sorted(list(self.all_cORFs()), key = score, reverse=True)
         if not ranked_orfs:
-            return EmptyChain
+            return self.EmptyChain()
 
         #for o in ranked_orfs:
             #print "  ",o,self.map_from_spliced(o[1]),self.map_from_spliced(o[2])
@@ -591,8 +612,45 @@ class CircRNA(Transcript):
 
         return CDS
 
+    @property
+    def mRNA(self):
+        """
+        Tries to return the linear mRNA counterpart from the circRNA gene_id
+        If this circRNA gene model was inferred by exon_intersect.py,
+        this should work.
+        """
+        if not self.gene_id.startswith("circRNA"):
+            return self.EmptyChain()
+        
+        tx_name = self.gene_id.split(':')[3]
+        return self.system.transcript_models[tx_name]
     
-
+    @property
+    def noncirc_mRNA(self):
+        """
+        Tries to return those parts of the matching mRNA that are not 
+        shared by the circ.
+        """
+        mRNA = self.mRNA
+        if not mRNA:
+            return self.EmptyChain()
+        
+        before,chain,after = mRNA.intersect(['a','b','c'], self.start, self.end)
+        host_chain = before + after
+        
+        return host_chain
+    
+    @property
+    def noncirc_CDS(self):
+        CDS = self.mRNA.CDS
+        if not CDS:
+            return self.EmptyChain()
+        
+        before,chain,after = CDS.intersect(['a','b','c'], self.start, self.end)
+        nc = before + after
+        nc_name = CDS.name + '.noncirc.{0}'.format(self.name)
+        return Transcript(nc_name, nc.chrom, nc.sense, nc.exon_starts, nc.exon_ends, (nc.start, nc.end), system=self.system)
+        
         
 # factory functions to generate transcript models from downloaded gene-models
 def transcripts_from_UCSC(fname,system=None,tx_class = None,gene_names = {},fix_chr=True,table_format=ucsc_table_format,tx_type=Transcript,**kwargs):
