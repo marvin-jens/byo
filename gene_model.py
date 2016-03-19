@@ -242,7 +242,22 @@ class ExonChain(object):
         before,chain,after = self.intersect(['before','cut','after'],start,end,expand=False)
         return chain
     
+    #def __eq__(self,other):
+        #if self.chrom != other.chrom:
+            #return False
+        #elif self.sense != other.sense:
+            #return False
+        #elif (self.exon_starts != other.exon_starts).any():
+            #return False
+        #elif (self.exon_ends != other.exon_ends).any():
+            #return False
+        #else:
+            #return True
         
+    @property
+    def key(self):
+        return (self.chrom,self.sense,tuple(self.exon_starts),tuple(self.exon_ends))
+    
     def __add__(self,other):
         """
         concatenates two non-overlapping exon-chains, returning a new ExonChain object
@@ -608,6 +623,7 @@ class CircRNA(Transcript):
         CDS.stop_codon = g_stop
 
         CDS.aa = aa
+        CDS.orf_len = l
         CDS.orf_attrs = orf_attrs
 
         return CDS
@@ -624,7 +640,15 @@ class CircRNA(Transcript):
         
         tx_name = self.gene_id.split(':')[3]
         return self.system.transcript_models[tx_name]
-    
+
+    @property
+    def mRNA_CDS(self):
+        m = self.mRNA
+        if m:
+            return m.CDS
+        else:
+            return self.EmptyChain()
+        
     @property
     def noncirc_mRNA(self):
         """
