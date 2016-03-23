@@ -238,7 +238,7 @@ class ExonChain(object):
         else:
             return after,chain,before
 
-    def cut(self,start,end,outer=False):
+    def cut(self,start,end):
         before,chain,after = self.intersect(['before','cut','after'],start,end,expand=False)
         return chain
     
@@ -489,14 +489,18 @@ class CircRNA(Transcript):
         self.origin_spliced = super(CircRNA,self).map_to_spliced(pos)
         #print "ORIGIN_SPLICED",pos,"->",self.origin_spliced
 
-    def cut(self,start,end,outer=False):
+    def cut(self,start,end,mode="auto"):
         before,inside,after = self.intersect(['before','cut','after'],start,end,expand=False)
         new_name = "{self.name}_cut_{start}-{end}".format(self=self, start=start, end=end)
         
-        if outer or (start > end and self.sense == '+') or (start < end and self.sense == '-'):
+        #print "CUT",mode
+        #print before.spliced_length, before
+        #print inside.spliced_length, inside
+        #print after.spliced_length, after
+        
+        if mode == "outside" or (mode == "auto" and ((start > end and self.sense == '+') or (start < end and self.sense == '-')) ):
             # circRNA wrap-around!
             new_chain = before + after
-            
             outside = CircRNA(new_name+"_outer", new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
             outside.wraparound = [before.spliced_length,after.spliced_length][::outside.dir]
             try:
@@ -604,19 +608,32 @@ class CircRNA(Transcript):
         
         ranked_orfs = sorted(list(self.all_cORFs()), key = score, reverse=True)
         if not ranked_orfs:
-            return self.EmptyChain()
+            EC = self.EmptyChain()
+            EC.aa = ""
+            EC.orf_len = 0
+            EC.orf_attrs = set(["N/A",])
+            EC.name = "noORF"
+            EC.start_codon = -1
+            EC.stop_codon = -1
+            return EC
 
         #for o in ranked_orfs:
             #print "  ",o,self.map_from_spliced(o[1]),self.map_from_spliced(o[2])
             
         l,start,stop,orf_attrs,aa = ranked_orfs[0]
+        #print l, self.spliced_length
         g_start = self.map_from_spliced(start)
         g_stop = self.map_from_spliced(stop)
 
-        if "HEAD_TO_TAIL" in orf_attrs:
-            CDS = self.cut(g_start,g_stop,outer=True)
+        if l >= self.spliced_length:
+            # the cORF runs around at least once!
+            CDS = self.cut(self.start, self.end, mode="inside")
+            #print "CDS.spliced_length",CDS.spliced_length
         else:
-            CDS = self.cut(g_start,g_stop)
+            if "HEAD_TO_TAIL" in orf_attrs:
+                CDS = self.cut(g_start, g_stop, mode="outside")
+            else:
+                CDS = self.cut(g_start, g_stop, mode="inside")
         
         CDS.name = "%s.cORF" % self.name
         CDS.start_codon = g_start
