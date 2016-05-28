@@ -68,13 +68,15 @@ class ExonChain(object):
             return ExonChain(self.chrom,self.sense,self.exon_ends[:-1],self.exon_starts[1:],system=self.system)
 
     def map_to_spliced(self,pos):
-        nl = min(max(0,bisect_left(self.exon_ends,pos)),self.exon_count-1)
-        #print nl, self.exon_count
-        #print self.exon_starts, pos, self.exon_ends
-        if not (self.exon_starts[nl] <= pos <= self.exon_ends[nl]):
-            raise ValueError("%d does not lie within any exon bounds" % pos)
+        if self.sense == "+":
+            n = min(bisect_right(self.exon_starts, pos), self.exon_count) - 1
+            return self.ofs + self.dir * (pos - self.exon_starts[n] + self.exon_txstarts[n])
+        else:
+            n = max(0,bisect_left(self.exon_ends,pos))
+            if not (self.exon_starts[n] <= pos <= self.exon_ends[n]):
+                raise ValueError("%d does not lie within any exon bounds" % pos)
 
-        return self.ofs + self.dir * (pos - self.exon_starts[nl] + self.exon_txstarts[nl])
+            return self.ofs + self.dir * (pos - self.exon_starts[n] + self.exon_txstarts[n]) - 1
 
     def map_block_from_spliced(self,start,end):
         x,y = self.map_from_spliced(start),self.map_from_spliced(end)
@@ -95,8 +97,8 @@ class ExonChain(object):
         else:
             return y,x
 
-    def map_to_exon(self,pos):
-        pos = self.ofs + self.dir * pos
+    def map_to_exon(self,tx_pos):
+        pos = self.ofs + self.dir * tx_pos
         n = max(0,bisect_left(self.exon_txstarts,pos) -1 )
         return n
         
@@ -105,10 +107,24 @@ class ExonChain(object):
         pos = self.ofs + self.dir * pos
         #print "POS",pos
         #assert (0 <= pos < self.spliced_length)
-        n = max(0,bisect_left(self.exon_txstarts,pos) -1 )
-        #print n,len(self.exon_starts),len(self.exon_txstarts)
-        return self.exon_starts[n] + pos - self.exon_txstarts[n]
-
+        #n = max(0,bisect_left(self.exon_txstarts,pos) -1 )
+        if self.sense == "+":
+            n = min(bisect_right(self.exon_txstarts, pos), self.exon_count) - 1
+            if n == self.exon_count or n < 0:
+                print self.exon_txstarts
+                print pos
+                print ":( plus strand"
+            #print n,len(self.exon_starts),len(self.exon_txstarts)
+            return self.exon_starts[n] + pos - self.exon_txstarts[n]
+        else:
+            n = max(0,bisect_left(self.exon_txstarts,pos) -1 ) 
+            if n == self.exon_count or n < 0:
+                print self.exon_txstarts
+                print pos
+                print ":( minus strand"
+            #print n,len(self.exon_starts),len(self.exon_txstarts)
+            return self.exon_starts[n] + pos - self.exon_txstarts[n] - 1
+            
     def splice(self,track,join = lambda l : "".join(l),get="get_oriented",**kwargs):
         get_func = getattr(track,get)
         return join([get_func(self.chrom,start,end,self.sense,**kwargs) for start,end in self.exon_bounds][::self.dir])
@@ -453,8 +469,7 @@ class CircRNA(Transcript):
         self.name = name
         self.description = description
 
-        self.origin = self.start
-        self.origin_spliced = 0
+        self.origin_reset()
 
         cds_start,cds_end = cds
         if cds_start == cds_end:
@@ -484,33 +499,46 @@ class CircRNA(Transcript):
                 self.CDS.start_codon = cds_end
                 self.CDS.stop_codon = cds_start
 
-    def set_origin(self,pos):
-        self.origin = pos
-        self.origin_spliced = super(CircRNA,self).map_to_spliced(pos)
-        #print "ORIGIN_SPLICED",pos,"->",self.origin_spliced
+    def origin_reset(self):
+        if self.sense == '+':
+            self.origin = self.start
+            self.origin_spliced = 0
+        else:
+            self.origin = self.end - 1 # the position that should be mapped to 0 in spliced coordinates!
+            self.origin_spliced = 0
 
+    def set_origin(self,pos_genome):
+        #print "set_origin() called"
+        self.origin = pos_genome
+        try:
+            self.origin_spliced = super(CircRNA,self).map_to_spliced(pos_genome)
+        except ValueError:
+            pass # TODO FIXXXXXXX!
+        #print "ORIGIN_SPLICED",pos_genome,"->",self.origin_spliced
+
+    def set_origin_spliced(self,pos_circ):
+        self.origin_spliced = pos_circ % self.spliced_length
+        self.origin = self.map_from_spliced(0)
+        
     def cut(self,start,end,mode="auto"):
-        before,inside,after = self.intersect(['before','cut','after'],start,end,expand=False)
+        #print "cut called"
+        if self.sense == '-':
+            before,inside,after = self.intersect(['before','cut','after'],min(start+1,end+1), max(start+1,end+1), expand=False)
+        else:
+            before,inside,after = self.intersect(['before','cut','after'],min(start,end), max(start,end), expand=False)
         new_name = "{self.name}_cut_{start}-{end}".format(self=self, start=start, end=end)
         
-        #print "CUT",mode
-        #print before.spliced_length, before
-        #print inside.spliced_length, inside
-        #print after.spliced_length, after
+        #print "CUT",mode, start, end
+        #print "before", before.spliced_length, before
+        #print "chain", inside.spliced_length, inside
+        #print "after", after.spliced_length, after
         
         if mode == "outside" or (mode == "auto" and ((start > end and self.sense == '+') or (start < end and self.sense == '-')) ):
             # circRNA wrap-around!
             new_chain = before + after
             outside = CircRNA(new_name+"_outer", new_chain.chrom, new_chain.sense, new_chain.exon_starts, new_chain.exon_ends, [new_chain.start, new_chain.start], system=self.system)
             outside.wraparound = [before.spliced_length,after.spliced_length][::outside.dir]
-            try:
-                outside.set_origin(start)
-            except ValueError:
-                # coordinate hit the boundary of an exon that's not in the cut
-                # falling back to the default (start of first exon) should be 
-                # correct in this case
-                pass
-
+            outside.set_origin(start)
             return outside
         else:
             new_chain = inside
@@ -710,50 +738,90 @@ def transcripts_from_UCSC(fname,system=None,tx_class = None,gene_names = {},fix_
         
         # splice in gene ids if given in a separate file (ce6)
         k['name2'] = gene_names.get(name,k.get('name2',k.get('proteinID',name)))
-        #print k['name2'],name
         return tx_type(name,chrom,sense,exonStarts,exonEnds,(cdsStart,cdsEnd),description=k,system=system)
-
-    
-    #for tx in LazyImporter(path,factory,"name",skip=[0,11,13,14],descr=ucsc_table_format):
-        #yield tx
 
     ucsc_type_hints = dict(txStart="int",txEnd="int",cdsStart="int",cdsEnd="int",exonCount="int",exonStarts="intlist",exonEnds="intlist",exonFrames="intlist")
     return LazyImporter(fname,factory,"name",type_hints=ucsc_type_hints,renames=dict(strand="sense"),parse_comments=True,descr=table_format,**kwargs)
-    #return LazyImporter(fname,factory,"name",skip=[0,11,13,14],descr=ucsc_table_format)
 
-def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thresh=20):
+def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thresh=20, system = None):
+    import byo.io.gff
+    #debug("parsing sorted GTF '%s'" % fname)
 
-    for i,args in enumerate(get_exons_for_transcript()):
-        if not (i % 1000):
-            print i
+    shared_attributes = {}
+    exon_starts = []
+    exon_ends = []
+    chrom = "NN"
+    sense = "NN"
+    current_tx = "NN"
 
-        tx = ExonChain(*args)
-        tx.UTR5 = None
-        tx.CDS = None
-        tx.UTR3 = None
-        #print tx.name
-        if ORF_thresh > 0:
-            orfs = sorted([ (len(orf),orf,start,end) for (start,end,orf) in all_orfs(tx.spliced_sequence) if len(orf) > ORF_thresh],reverse=True)
-            if orfs:
-                """
-                largest open-reading-frame above threshold becomes CDS
-                """
-                length,orf,start,end = orfs[0]
-                try:
-                    cds_start,cds_end = tx.map_block_from_spliced(start,end)
-                except AssertionError:
-                    print start,end,end-start,tx.spliced_length,tx.tx_start,tx.tx_end,tx.exon_count,tx.sense
-                    print tx.map_from_spliced(start)
-                    print tx.map_from_spliced(end)
+    for i,gff in enumerate(byo.io.gff.gff_importer(fname,fix_chr=False)):
+        #sys.stderr.write(".")
+        if gff.type != "exon":
+            continue
 
-                #cds_start = tx.map_from_spliced(start)
-                #cds_end = tx.map_from_spliced(end)
+        attrs = byo.io.gff.dict_from_attrstr(gff.attr_str)
+        tx_id = attrs.get("transcript_id","")
+        tx_id = attrs.get("ID",tx_id)
+        tx_id = attrs.get("Name",tx_id)
+        
+        if not tx_id:
+            # GFF3
+            tx_id = attrs["Parent"].split(":")[1]
 
-                seg_names = ["UTR5","CDS","UTR3"]
-                tx.intersect(seg_names,row.cdsStart,row.cdsEnd,add_as_segments=True)
-                #print tx.name,len(orfs),orf
+        #sys.stderr.write(tx_id)
+        if tx_id != current_tx:
+            if exon_starts:
+                yield Transcript(current_tx,chrom,sense,exon_starts,exon_ends,(exon_starts[0],exon_starts[0]),description=shared_attributes, system=system)
+                exon_starts = []
+                exon_ends = []
+                shared_attributes = {}
 
-        yield tx
+            current_tx = tx_id
+            chrom = gff.chrom
+            sense = gff.sense
+
+        shared_attributes.update(attrs)
+
+        exon_starts.append(gff.start-1)
+        exon_ends.append(gff.end)
+
+    if exon_starts:
+        yield Transcript(tx_id,chrom,sense,exon_starts,exon_ends,(exon_starts[0],exon_starts[0]),description=shared_attributes, system=system)
+
+
+#def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thresh=20):
+
+    #for i,args in enumerate(get_exons_for_transcript()):
+        #if not (i % 1000):
+            #print i
+
+        #tx = ExonChain(*args)
+        #tx.UTR5 = None
+        #tx.CDS = None
+        #tx.UTR3 = None
+        ##print tx.name
+        #if ORF_thresh > 0:
+            #orfs = sorted([ (len(orf),orf,start,end) for (start,end,orf) in all_orfs(tx.spliced_sequence) if len(orf) > ORF_thresh],reverse=True)
+            #if orfs:
+                #"""
+                #largest open-reading-frame above threshold becomes CDS
+                #"""
+                #length,orf,start,end = orfs[0]
+                #try:
+                    #cds_start,cds_end = tx.map_block_from_spliced(start,end)
+                #except AssertionError:
+                    #print start,end,end-start,tx.spliced_length,tx.tx_start,tx.tx_end,tx.exon_count,tx.sense
+                    #print tx.map_from_spliced(start)
+                    #print tx.map_from_spliced(end)
+
+                ##cds_start = tx.map_from_spliced(start)
+                ##cds_end = tx.map_from_spliced(end)
+
+                #seg_names = ["UTR5","CDS","UTR3"]
+                #tx.intersect(seg_names,row.cdsStart,row.cdsEnd,add_as_segments=True)
+                ##print tx.name,len(orfs),orf
+
+        #yield tx
 
 if __name__ == "__main__":
         
