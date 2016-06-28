@@ -51,6 +51,7 @@ class IndexedFasta(object):
             self.store_index(ipath)
 
         if lz:
+            from byo.io.lz import LZFile
             self._f = LZFile(fname)
         else:
             f = file(fname)
@@ -182,6 +183,7 @@ class GenomeAccessor(Accessor):
             if os.access(fname + '.lzot', os.R_OK):
                 self.data = IndexedFasta(fname,lz = True, **kwargs)
                 self.covered_strands = strands
+                break
                 
             elif os.access(fname,os.R_OK):
                 self.data = IndexedFasta(fname,**kwargs)
