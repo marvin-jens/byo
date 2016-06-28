@@ -18,6 +18,7 @@ class LZFile(object):
     def __init__(self, fname, max_cached = 1000, compress_on_open=False):
         self.logger = logging.getLogger("LZFile({0})".format(fname) )
         self.basename = fname
+        self._pos = 0 # used by seek and __iter__
         ind_file = fname + '.lzot'
         lz_file = fname + '.lzoc'
         if not os.path.exists(lz_file) and os.path.exists(ind_file):
@@ -81,11 +82,15 @@ class LZFile(object):
             #self.cached_items.append(i)
 
         if len(self.chunk_cache) > self.max_cached:
-            pass
+            self.chunk_cache = {}
+            # TODO
             # not implemented yet: efficient way to discard least used chunks
             
         return self.chunk_cache[i]
             
+    def seek(self, pos):
+        self._pos = pos
+
     def __getslice__(self, start, end):
         cs = self.chunk_size
         out = []
@@ -104,10 +109,20 @@ class LZFile(object):
     def __iter__(self):
         self.logger.debug("iterating over lines")
         lines = [""]
-        for i in xrange(len(self.chunk_starts) -1):
-            chunk = self.get_chunk(i)
+        cs = self.chunk_size
+        
+        # simulate seek() functionality
+        chunk_i = self._pos / cs
+        for i in xrange(chunk_i, len(self.chunk_starts) -1):
+            chunk = self.get_chunk_cached(i)
             self.logger.debug("iterating over chunk of {0} bytes".format(len(chunk)))
             
+            if i == chunk_i:
+                # skip the bytes we are not interested in from the first chunk
+                chunk_start = chunk_i * cs
+                chunk = chunk[self._pos - chunk_start:]
+            
+            # and line-iterate over the rest
             new_lines = chunk.splitlines(True)
             if not lines[-1].endswith('\n'):
                 # last line from previous chunk was incomplete.
