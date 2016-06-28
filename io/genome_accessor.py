@@ -36,7 +36,7 @@ from byo import complement, rev_comp
 
 
 class IndexedFasta(object):
-    def __init__(self,fname,split_chrom="",**kwargs):
+    def __init__(self,fname,split_chrom="",lz = False, **kwargs):
         self.logger = logging.getLogger('byo.io.IndexedFasta')
         self.fname = fname
         self.chrom_stats = {}
@@ -49,9 +49,12 @@ class IndexedFasta(object):
         else:
             self.index()
             self.store_index(ipath)
-                
-        f = file(fname)
-        self.mmap = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
+
+        if lz:
+            self._f = LZFile(fname)
+        else:
+            f = file(fname)
+            self._f = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
 
 
     def index(self):
@@ -149,7 +152,7 @@ class IndexedFasta(object):
         ofs_end = l_end * skip + end + ofs
         #print "ofs",ofs_start,ofs_end,ofs_end - ofs_start
         
-        s = self.mmap[ofs_start:ofs_end].replace(skip_char,"")
+        s = self._f[ofs_start:ofs_end].replace(skip_char,"")
         if pad_start or pad_end:
             s = "N"*pad_start + s + "N"*pad_end
 
@@ -162,7 +165,7 @@ class GenomeAccessor(Accessor):
     def __init__(self,path,chrom,sense,system=None,**kwargs):
         super(GenomeAccessor,self).__init__(path,chrom,sense,system=system,**kwargs)
         self.logger = logging.getLogger('byo.io.GenomeAccessor')
-        self.logger.debug("mmap'ing genomic sequence for chromosome %s from '%s'" % (chrom,path))
+        self.logger.debug("opening genomic sequence for chromosome %s from '%s'" % (chrom,path))
 
         self.system = system
         self.data = None
@@ -176,7 +179,11 @@ class GenomeAccessor(Accessor):
         ]
         for fname,strands in trials:
             self.logger.debug("trying to load '%s'" % fname)
-            if os.access(fname,os.R_OK):
+            if os.access(fname + '.lzot', os.R_OK):
+                self.data = IndexedFasta(fname,lz = True, **kwargs)
+                self.covered_strands = strands
+                
+            elif os.access(fname,os.R_OK):
                 self.data = IndexedFasta(fname,**kwargs)
                 self.covered_strands = strands
                 break
