@@ -15,7 +15,7 @@ MB = 1024.**2
 
 class LZFile(object):
     
-    def __init__(self, fname, max_cached = 1000, compress_on_open=False):
+    def __init__(self, fname, max_cached = 1000, compress_on_open=False, chunksize=10*1024*1024):
         self.logger = logging.getLogger("LZFile({0})".format(fname) )
         self.basename = fname
         self._pos = 0 # used by seek and __iter__
@@ -23,7 +23,7 @@ class LZFile(object):
         lz_file = fname + '.lzoc'
         if not os.path.exists(lz_file) and os.path.exists(ind_file):
             if compress_on_open:
-                self.compress_file(fname)
+                self.compress_file(fname, chunksize=chunksize)
             else:
                 msg ="The file {0} is not LZ4 compressed and 'compress_on_open' was not set.".format(fname)
                 self.logger.error(msg)
@@ -35,7 +35,7 @@ class LZFile(object):
         self.max_cached = max_cached
         
     @staticmethod
-    def compress_file( fname, chunksize=1*1024*1024):
+    def compress_file( fname, chunksize=10*1024*1024):
         tab_file = file(fname + '.lzot','w')
         comp_file = file(fname + '.lzoc','wb')
         comp_base = 0
