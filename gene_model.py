@@ -4,12 +4,12 @@ from collections import defaultdict,namedtuple
 from bisect import bisect_left,bisect_right
 import numpy as np
 
-from sequence_data.io.gff import gff_importer
-from sequence_data.protein import all_orfs,translate
-from sequence_data import protein
+from byo.io.gff import gff_importer
+from byo.protein import all_orfs,translate
+from byo import protein
 
-#from sequence_data.transcript import ProcessedTranscript
-#from sequence_data.locus import Locus
+#from byo.transcript import ProcessedTranscript
+#from byo.locus import Locus
 
 import logging
 from logging import debug,warning,info,error
@@ -26,10 +26,6 @@ class ExonChain(object):
     """
 
     def __init__(self,chrom,sense,exon_starts,exon_ends,system=None):
-        #if not system:
-            #from sequence_data.systems import hg18
-            #system = hg18
-
         self.system = system
         self.chrom = chrom
         self.sense = sense
@@ -723,7 +719,7 @@ class CircRNA(Transcript):
         
 # factory functions to generate transcript models from downloaded gene-models
 def transcripts_from_UCSC(fname,system=None,tx_class = None,gene_names = {},fix_chr=True,table_format=ucsc_table_format,tx_type=Transcript,**kwargs):
-    from sequence_data.io.lazytables import LazyImporter,NamedTupleImporter
+    from byo.io.lazytables import LazyImporter,NamedTupleImporter
 
     kw = {}
     if tx_class:
