@@ -3,8 +3,11 @@ import os,sys
 from time import time
 import logging
 
-def chunks(fname, chunksize):
-    f = file(fname,'rb')
+def chunks(fname, chunksize, alt_src):
+    if alt_src:
+        f = alt_src
+    else:
+        f = file(fname,'rb')
     chunk = f.read(chunksize)
     while chunk:
         yield chunk
@@ -15,15 +18,15 @@ MB = 1024.**2
 
 class LZFile(object):
     
-    def __init__(self, fname, max_cached = 1000, compress_on_open=False, chunksize=10*1024*1024):
+    def __init__(self, fname, max_cached = 1000, compress_on_open=False, chunksize=10*1024*1024, alt_src = None, level=2):
         self.logger = logging.getLogger("LZFile({0})".format(fname) )
         self.basename = fname
         self._pos = 0 # used by seek and __iter__
         ind_file = fname + '.lzot'
         lz_file = fname + '.lzoc'
-        if not os.path.exists(lz_file) and os.path.exists(ind_file):
+        if not (os.path.exists(lz_file) and os.path.exists(ind_file)):
             if compress_on_open:
-                self.compress_file(fname, chunksize=chunksize)
+                self.compress_file(fname, chunksize=chunksize, alt_src=alt_src, level=level)
             else:
                 msg ="The file {0} is not LZ4 compressed and 'compress_on_open' was not set.".format(fname)
                 self.logger.error(msg)
@@ -35,7 +38,7 @@ class LZFile(object):
         self.max_cached = max_cached
         
     @staticmethod
-    def compress_file( fname, chunksize=10*1024*1024):
+    def compress_file( fname, chunksize=10*1024*1024, alt_src = None, level=2):
         tab_file = file(fname + '.lzot','w')
         comp_file = file(fname + '.lzoc','wb')
         comp_base = 0
@@ -44,11 +47,11 @@ class LZFile(object):
         
         tab_file.write('{0}\n'.format(chunksize))
 
-        for chunk in chunks(fname, chunksize):
+        for chunk in chunks(fname, chunksize, alt_src = alt_src):
             uncomp_size = len(chunk)
 
             t1 = time()
-            comp = Z.compress(chunk, level=2)
+            comp = Z.compress(chunk, level=level)
             comp_size = len(comp)
             comp_file.write(comp)
             ratio = 100. * float(comp_size) / uncomp_size 
