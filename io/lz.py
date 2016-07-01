@@ -26,21 +26,28 @@ class LZFile(object):
         lz_file = fname + '.lzoc'
         if not (os.path.exists(lz_file) and os.path.exists(ind_file)):
             if compress_on_open:
+                self.logger.info("compressing '{0}' chunksize={1} level={2}".format(fname, chunksize, level))
                 self.compress_file(fname, chunksize=chunksize, alt_src=alt_src, level=level)
             else:
                 msg ="The file {0} is not LZ4 compressed and 'compress_on_open' was not set.".format(fname)
                 self.logger.error(msg)
                 raise IOError(msg)
             
+        self.chunk_cache = {}
+        self.chunk_size = chunksize
+        self.max_cached_MB = max_cached
+        self.max_cached_chunks = self.max_cached_MB / (self.chunk_size / 1024**2)
+
         self.load_index(ind_file)
         self.lz_file = file(lz_file,'rb')
-        self.chunk_cache = {}
-        self.max_cached = max_cached
         
     @staticmethod
     def compress_file( fname, chunksize=10*1024*1024, alt_src = None, level=2):
-        tab_file = file(fname + '.lzot','w')
-        comp_file = file(fname + '.lzoc','wb')
+        import tempfile
+        tab_file = tempfile.NamedTemporaryFile(mode="w",dir = os.path.dirname(fname),delete=False)
+        tab_file_name = fname + '.lzot'
+        comp_file_name = fname + '.lzoc'
+        comp_file = file(comp_file_name,'wb')
         comp_base = 0
         cum_size = 0
         t0 = time()
@@ -67,12 +74,28 @@ class LZFile(object):
         tab_file.write('{0}\n'.format(comp_base))
         tab_file.write('{0}\n'.format(cum_size))
 
+        # make sure everything is on disk
+        os.fsync(tab_file)
+        tab_file.close()
+                
+        # this is atomic on POSIX as we have created tmp in the same directory, 
+        # therefore same filesystem
+        os.rename(tab_file.name,tab_file_name)
+
+        # make it accessible to everyone
+        import stat
+        os.chmod(tab_file_name, stat.S_IROTH | stat.S_IRGRP | stat.S_IRUSR)
+        os.chmod(comp_file_name, stat.S_IROTH | stat.S_IRGRP | stat.S_IRUSR)
+
     def load_index(self, idxname):
         self.logger.info("loading index '{0}'".format(idxname))
         lines = file(idxname).readlines()
         self.chunk_size = int(lines[0])
+        self.max_cached_chunks = self.max_cached_MB / (self.chunk_size / 1024**2)
+        
         self.L = int(lines[-1])
         self.chunk_starts = [int(b) for b in lines[1:-1]]
+        self.logger.info("done.")
         
     def get_chunk(self, i):
         self.lz_file.seek(self.chunk_starts[i])
@@ -80,7 +103,8 @@ class LZFile(object):
         return Z.decompress(comp)
     
     def get_chunk_cached(self, i):
-        if len(self.chunk_cache) > self.max_cached:
+        if len(self.chunk_cache) > self.max_cached_chunks:
+            self.logger.debug("exceeded max_cached_chunks. Freeing memory")
             self.chunk_cache = {}
             # TODO
             # not implemented yet: efficient way to discard least used chunks
