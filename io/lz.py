@@ -80,14 +80,14 @@ class LZFile(object):
         return Z.decompress(comp)
     
     def get_chunk_cached(self, i):
-        if not i in self.chunk_cache:
-            self.chunk_cache[i] = self.get_chunk(i)
-            #self.cached_items.append(i)
-
         if len(self.chunk_cache) > self.max_cached:
             self.chunk_cache = {}
             # TODO
             # not implemented yet: efficient way to discard least used chunks
+
+        if not i in self.chunk_cache:
+            self.chunk_cache[i] = self.get_chunk(i)
+            #self.cached_items.append(i)
             
         return self.chunk_cache[i]
             
