@@ -64,7 +64,7 @@ class SparseMapAccessor(Accessor):
         super(SparseMapAccessor,self).__init__(path,chrom,sense,sense_specific=sense_specific,**kwargs)
         self.logger = logging.getLogger('byo.io.SparseMapAccessor')
         self.logger.debug("loading compressed sparse data for chromosome {0}{1} from '{2}'".format(chrom,sense,path))
-
+        self.system = system
         self.sense_specific = sense_specific
         if sense_specific:
             fname = os.path.join(path,chrom+sense+ext)
