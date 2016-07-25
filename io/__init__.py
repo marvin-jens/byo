@@ -104,6 +104,8 @@ def qfa_chunks(lines):
     except StopIteration:
         pass
 
+fastq_chunks = qfa_chunks
+
 def fasta_chunks(lines,strip=True,fuse=True):
     chunk = ""
     data = []
