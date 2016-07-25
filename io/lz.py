@@ -41,6 +41,9 @@ class LZFile(object):
         self.load_index(ind_file)
         self.lz_file = file(lz_file,'rb')
         
+    def flush(self):
+        self.chunk_cache = {}
+        
     @staticmethod
     def compress_file( fname, chunksize=10*1024*1024, alt_src = None, level=2):
         import tempfile
@@ -105,7 +108,7 @@ class LZFile(object):
     def get_chunk_cached(self, i):
         if len(self.chunk_cache) > self.max_cached_chunks:
             self.logger.debug("exceeded max_cached_chunks. Freeing memory")
-            self.chunk_cache = {}
+            self.flush()
             # TODO
             # not implemented yet: efficient way to discard least used chunks
 
