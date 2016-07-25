@@ -5,36 +5,6 @@ import logging
 from byo.track import Accessor
 from byo import complement, rev_comp
 
-#class mmap_fasta(object):
-    #def __init__(self,fname):
-        #f = file(fname)
-        #header = f.readline()
-        #row = f.readline()
-
-        #self.ofs = len(header)
-        #self.lline = len(row)
-        #self.ldata = len(row.strip())
-        #self.skip = self.lline-self.ldata
-        #self.skip_char = row[self.ldata:]
-
-        #self.mmap = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
-
-    #def __getslice__(self,start,end):
-        #l_start = start / self.ldata
-        #l_end = end / self.ldata
-
-        #ofs_start = l_start * self.skip + start + self.ofs
-        #ofs_end = l_end * self.skip + end + self.ofs
-        
-        #s = self.mmap[ofs_start:ofs_end].replace(self.skip_char,"")
-        #L = end-start
-        #if len(s) == L:
-            #return s
-        #else:
-            #return s+"N"*(L-len(s))
-        #return 
-
-
 class IndexedFasta(object):
     def __init__(self,fname,split_chrom="",lz = False, **kwargs):
         self.logger = logging.getLogger('byo.io.IndexedFasta')
@@ -42,33 +12,36 @@ class IndexedFasta(object):
         self.chrom_stats = {}
         self.split_chrom = split_chrom
 
+        if lz:
+            from byo.io.lz import LZFile
+            self.logger.debug("{0} is LZ file".format(fname))
+            self._f = LZFile(fname)
+            idx_file = self._f
+        else:
+            f = file(fname)
+            idx_file = f
+            self._f = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
+
         # try to load index
         ipath = fname + '.byo_index'
         if os.access(ipath,os.R_OK):
             self.load_index(ipath)
         else:
-            self.index()
+            self.index(idx_file)
             self.store_index(ipath)
 
-        if lz:
-            from byo.io.lz import LZFile
-            self._f = LZFile(fname)
-        else:
-            f = file(fname)
-            self._f = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
 
 
-    def index(self):
+    def index(self, idx_file):
         self.logger.debug("index('{self.fname}') split_chrom={self.split_chrom}".format(**locals()))
 
         ofs = 0
-        f = file(self.fname)
         chrom = "undef"
         chrom_ofs = 0
         size = 0
         nl_char = 0
 
-        for line in f:
+        for line in idx_file:
             ofs += len(line)
             if line.startswith('>'):
                 # store size of previous sequence
@@ -92,9 +65,8 @@ class IndexedFasta(object):
 
         # store size of previous sequence
         if size: self.chrom_stats[chrom].append(size)
-                        
-        f.close()
-
+        idx_file.flush()
+        idx_file.seek(0)
 
     def store_index(self,ipath):
         self.logger.info("store_index('%s')" % ipath)
@@ -181,6 +153,7 @@ class GenomeAccessor(Accessor):
         for fname,strands in trials:
             self.logger.debug("trying to load '%s'" % fname)
             if os.access(fname + '.lzot', os.R_OK):
+                self.logger.debug("{0} is LZ file".format(fname))
                 self.data = IndexedFasta(fname,lz = True, **kwargs)
                 self.covered_strands = strands
                 break
