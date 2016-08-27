@@ -66,9 +66,12 @@ class ExonChain(object):
     def map_to_spliced(self,pos):
         if self.sense == "+":
             n = min(bisect_right(self.exon_starts, pos), self.exon_count) - 1
+            if not (self.exon_starts[n] <= pos <= self.exon_ends[n]):
+                raise ValueError("%d does not lie within any exon bounds" % pos)
+
             return self.ofs + self.dir * (pos - self.exon_starts[n] + self.exon_txstarts[n])
         else:
-            n = max(0,bisect_left(self.exon_ends,pos))
+            n = min(max(0,bisect_left(self.exon_ends,pos)), self.exon_count - 1)
             if not (self.exon_starts[n] <= pos <= self.exon_ends[n]):
                 raise ValueError("%d does not lie within any exon bounds" % pos)
 
@@ -107,17 +110,19 @@ class ExonChain(object):
         if self.sense == "+":
             n = min(bisect_right(self.exon_txstarts, pos), self.exon_count) - 1
             if n == self.exon_count or n < 0:
-                print self.exon_txstarts
-                print pos
-                print ":( plus strand"
+                #print self.exon_txstarts
+                #print pos
+                #print ":( plus strand"
+                raise ValueError("{0} out of transcript bounds".format(pos))
             #print n,len(self.exon_starts),len(self.exon_txstarts)
             return self.exon_starts[n] + pos - self.exon_txstarts[n]
         else:
             n = max(0,bisect_left(self.exon_txstarts,pos) -1 ) 
             if n == self.exon_count or n < 0:
-                print self.exon_txstarts
-                print pos
-                print ":( minus strand"
+                #print self.exon_txstarts
+                #print pos
+                #print ":( minus strand"
+                raise ValueError("{0} out of transcript bounds".format(pos))
             #print n,len(self.exon_starts),len(self.exon_txstarts)
             return self.exon_starts[n] + pos - self.exon_txstarts[n] - 1
             
