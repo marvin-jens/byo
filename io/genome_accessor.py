@@ -201,6 +201,45 @@ class GenomeAccessor(Accessor):
         return "N"*int(end-start)
 
 
+class TwoBitAccessor(Accessor):
+    def __init__(self, path,chrom,sense,system=None,**kwargs):
+        super(TwoBitAccessor,self).__init__(path,chrom,sense,system=system,**kwargs)
+        import twobitreader as TB
+        self.logger = logging.getLogger('byo.io.TwoBitAccessor')
+        self.logger.debug("opening genomic sequence for chromosome %s from '%s'" % (chrom,path))
+
+        self.system = system
+        self.data = None
+        
+        # try to access the whole genome, using indexing for fast lookup
+        fname = os.path.join(path,"{0}.2bit".format(system))
+        try:
+            self.data = TB.TwoBitFile(fname)
+            self.data.chrom_stats = self.data.sequence_sizes()
+            self.covered_strands = [chrom+'+' for chrom in self.data.keys()] + [chrom+'-' for chrom in self.data.keys()]
+
+        except IOError:
+            # all fails: return Ns only
+            self.logger.warning("Could not access '{0}'. Switching to dummy mode (only Ns)".format(fname))
+            self.get_data = self.get_dummy
+            self.get_oriented = self.get_dummy
+            self.covered_strands = [chrom+'+',chrom+'-']
+            self.no_data = True
+
+        # TODO: maybe remove this if not needed
+        self.get = self.get_oriented
+
+
+    def get_data(self,chrom,start,end,sense):
+        print "TRALALA?"
+        seq = self.data[chrom][start:end]
+            
+        if sense == "-":
+            seq = complement(seq)
+
+        return seq
+
+
 
 class MSFAccessor(Accessor):
     def __init__(self,path,chrom,sense,system='hg19',offset=0,suffix='.maf.stitched.cmpl.repeats_lc',**kwargs):
