@@ -4,13 +4,13 @@ from byo.io.track_accessors import Accessor, ArrayAccessor, GenomeAccessor, Anno
 from byo.io.lazytables import NamedTupleImporter as Importer
 import byo.config
 
-import os,re
+import os,re, sys
 from logging import debug,warning,error,info
 from numpy import uint32, float32
 
 root = byo.config.system_root
 name = "hg19"
-genome = Track(os.path.join(root,"reference",name),GenomeAccessor,system=name)
+genome = Track(os.path.join(root,"genomes"),GenomeAccessor,system=name)
 
 class LazyTranscriptLoader(object):
     def __init__(self,system = None):
