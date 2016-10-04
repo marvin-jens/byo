@@ -31,11 +31,13 @@ class ExonChain(object):
         self.sense = sense
         self.exon_starts = np.array(sorted(exon_starts))
         self.exon_ends = np.array(sorted(exon_ends))
-        self.start = self.exon_starts[0]
-        self.end = self.exon_ends[-1]
+        self.name = ""
         self._setup()
     
     def _setup(self):
+        self.start = self.exon_starts[0]
+        self.end = self.exon_ends[-1]
+
         self.exon_count = len(self.exon_starts)
         self.exon_bounds = np.array([self.exon_starts,self.exon_ends]).transpose()
         self.intron_bounds = []
@@ -56,7 +58,9 @@ class ExonChain(object):
             self.ofs = 0
 
         self.tx_start,self.tx_end = [self.start,self.end][::self.dir]
-        self.name = "ExonChain (%s:%d-%d%s) %s %s" % (self.chrom,self.start,self.end,self.sense,str(self.exon_starts),str(self.exon_ends))
+        if not self.name:
+            # if the chain gets altered subsequently, don't loose the name
+            self.name = "ExonChain (%s:%d-%d%s) %s %s" % (self.chrom,self.start,self.end,self.sense,str(self.exon_starts),str(self.exon_ends))
 
     @property
     def intron_chain(self):
@@ -764,6 +768,7 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thr
         tx_id = attrs.get("transcript_id","")
         tx_id = attrs.get("ID",tx_id)
         tx_id = attrs.get("Name",tx_id)
+        tx_id = attrs.get("Parent",tx_id)
         
         if not tx_id:
             # GFF3
