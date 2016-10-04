@@ -8,6 +8,7 @@ class Accessor(object):
 
     def __init__(self,path,chrom,sense,sense_specific=False,system=None,**kwargs):
         self.system = system
+        self.chrom = chrom
         if sense_specific:
             self.covered_strands = [chrom+sense]
         else:
@@ -97,13 +98,13 @@ class Track(object):
 
         ID = chrom+sense
         if not ID in self.acc_cache:
-            self.logger.debug("Cache miss for %s%s. creating new accessor" % (chrom,sense))
+            self.logger.debug("Cache miss for chrom='%s' sense='%s'. creating new accessor" % (chrom,sense))
             acc = self.accessor(self.path,chrom,sense,**(self.kwargs))
             if acc.no_data:
                 self.no_data = True
             
             # register the accessor for as many chromosomes/strands/contigs as it feels responsible for.
-            self.logger.debug("Accessor covers strands '%s'" % str(sorted(set(acc.covered_strands))))
+            self.logger.debug("Accessor covers {0} strands".format(len(set(acc.covered_strands))))
             if acc.covered_strands == '*':
                 # hint that this accessors covers the complete genome
                 self.logger.debug("disabling auto_flush and registering accessor for everything")
