@@ -15,34 +15,92 @@ def chunks(fname, chunksize, alt_src):
 
 MB = 1024.**2
 
+from time import time
+
+class ChunkCache(object):
+    def __init__(self, max_cached_chunks = 1000):
+        self.max_cached_chunks = max_cached_chunks
+        
+        self.cache = {}
+        self.accessed = {}
+        self.logger = logging.getLogger('ChunkCache({0})'.format(max_cached_chunks))
+
+    def release(self, fraction=.2):
+        """
+        free the least accessed fraction (20%) of chunks that are cached to make room for new
+        """
+        if len(self.cache) < (1-fraction) * self.max_cached_chunks:
+            return
+
+        all_keys = [(c,k) for k,c in self.accessed.items()]
+        to_drop = sorted(all_keys)[:int(fraction*len(self.accessed))]
+        
+        self.logger.debug("releasing {0} chunks due to cache limit hit".format(len(to_drop)))
+        for c,key in to_drop:
+            self.cache.pop(key, None)
+            self.accessed.pop(key, None)
+
+        assert len(self.cache) == len(self.accessed)
+
+    def free_lzfile(self, lzfile):
+        to_drop = [(lz, chunk_i) for lz, chunk_i in self.cache.keys() if lz == lzfile]
+
+        self.logger.debug("releasing {0} chunks due to LZFile.close()".format(len(to_drop)))
+        for c,key in to_drop:
+            self.cache.pop(key, None)
+            self.accessed.pop(key, None)
+
+        assert len(self.cache) == len(self.accessed)
+
+    def get_chunk(self, lzfile, chunk_i):
+        key = (lzfile, chunk_i)
+        if not key in self.cache:
+            if len(self.cache) > self.max_cached_chunks:
+                self.release()
+
+            self.cache[key] = lzfile.get_chunk(chunk_i)
+            
+        self.accessed[key] = time()
+        return self.cache[key]
+                
+    def __getitem__(self, key):
+        lzfile, chunk_i = key
+        return self.get_chunk(lzfile, chunk_i)
+
+LZ_chunk_cache = ChunkCache()
 
 class LZFile(object):
     
-    def __init__(self, fname, max_cached = 1000, compress_on_open=False, chunksize=10*1024*1024, alt_src = None, level=2):
+    chunk_cache = {}
+    
+    def __init__(self, fname, alt_src = None, level=2, chunk_size=10*MB, compress_on_open=False):
         self.logger = logging.getLogger("LZFile({0})".format(fname) )
         self.basename = fname
+        self.chunk_size = chunk_size
         self._pos = 0 # used by seek and __iter__
         ind_file = fname + '.lzot'
         lz_file = fname + '.lzoc'
         if not (os.path.exists(lz_file) and os.path.exists(ind_file)):
             if compress_on_open:
-                self.logger.info("compressing '{0}' chunksize={1} level={2}".format(fname, chunksize, level))
-                self.compress_file(fname, chunksize=chunksize, alt_src=alt_src, level=level)
+                self.logger.info("compressing '{0}' chunk_size={1} level={2}".format(fname, chunk_size, level))
+                self.compress_file(fname, chunksize=chunk_size, alt_src=alt_src, level=level)
             else:
                 msg ="The file {0} is not LZ4 compressed and 'compress_on_open' was not set.".format(fname)
                 self.logger.error(msg)
                 raise IOError(msg)
             
-        self.chunk_cache = {}
-        self.chunk_size = chunksize
-        self.max_cached_MB = max_cached
-        self.max_cached_chunks = self.max_cached_MB / (self.chunk_size / 1024**2)
 
         self.load_index(ind_file)
         self.lz_file = file(lz_file,'rb')
+
+    def close(self):
+        self.logger.debug('close() called')
+        self.flush()
         
     def flush(self):
-        self.chunk_cache = {}
+        self.logger.debug('flush() called, releasing LZ chunks from global cache')
+        LZ_chunk_cache.free_lzfile(self)
+        
         
     @staticmethod
     def compress_file( fname, chunksize=10*1024*1024, alt_src = None, level=2):
@@ -94,7 +152,7 @@ class LZFile(object):
         self.logger.info("loading index '{0}'".format(idxname))
         lines = file(idxname).readlines()
         self.chunk_size = int(lines[0])
-        self.max_cached_chunks = self.max_cached_MB / (self.chunk_size / 1024**2)
+        #self.max_cached_chunks = self.max_cached_MB / (self.chunk_size / 1024**2)
         
         self.L = int(lines[-1])
         self.chunk_starts = [int(b) for b in lines[1:-1]]
@@ -106,17 +164,7 @@ class LZFile(object):
         return Z.decompress(comp)
     
     def get_chunk_cached(self, i):
-        if len(self.chunk_cache) > self.max_cached_chunks:
-            self.logger.debug("exceeded max_cached_chunks. Freeing memory")
-            self.flush()
-            # TODO
-            # not implemented yet: efficient way to discard least used chunks
-
-        if not i in self.chunk_cache:
-            self.chunk_cache[i] = self.get_chunk(i)
-            #self.cached_items.append(i)
-            
-        return self.chunk_cache[i]
+        return LZ_chunk_cache.get_chunk(self, i)
             
     def seek(self, pos):
         self._pos = pos
