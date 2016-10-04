@@ -76,11 +76,24 @@ class SparseMapAccessor(Accessor):
         
         # link this up directly, so other layers on top of this can treat it like an ArrayAccessor
         self.data = self.smap.data
+        #import gc
+        #self.refer_list = gc.get_referrers(self.data)
 
     def get_data(self, chrom, start, end, sense):
         return self.smap.data[start, end]
         
     
+    def flush(self):
+        import gc
+        self.logger.debug('flush() called. releasing smap')
+        #new_referrers = gc.get_referrers(self.data)
+        
+        #unlinked = set(new_referrers) - set(self.refer_list)
+        #self.logger.debug('gc.get_referrers(self.data) {0}'.format(new_referrers.keys()))
+        self.data = None
+        gc.collect(2)
+        
+        
 if __name__ == "__main__":
     FORMAT = '%(asctime)-20s\t%(levelname)s\t%(name)-25s\t%(message)s'
 
