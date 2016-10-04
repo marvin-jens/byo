@@ -2,8 +2,108 @@ import os
 import mmap
 import re
 import logging
-from byo.track import Accessor
+from byo.track import Accessor, Track
 from byo import complement, rev_comp
+
+
+class Singleton(type):
+    """
+    To be used as a metaclass. Ensures a class is only instantiated once 
+    **per combination of args and kwargs**
+    """
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        key = (cls, args, tuple(kwargs.items()) )
+        if key not in cls._instances:
+            cls._instances[key] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[key]
+
+
+
+class TwoBitAccessor(Accessor):
+    def __init__(self, path,chrom,sense,system=None, split_chrom="", **kwargs):
+        kwargs['sense_specific'] = False
+        super(TwoBitAccessor,self).__init__(path,chrom,sense,system=system,**kwargs)
+        import twobitreader as TB
+        from time import time
+
+        self.system = system
+        self.data = None
+        
+        # try to access the whole genome, using indexing for fast lookup
+        fname = os.path.join(path,"{0}.2bit".format(system))
+
+        self.logger = logging.getLogger('byo.io.TwoBitAccessor({0})'.format(fname))
+        t0 = time()
+        try:
+            self.data = TB.TwoBitFile(fname)
+            t1 = time()
+            self.data.chrom_stats = self.data.sequence_sizes()
+            self.chrom_lookup = {}
+            if split_chrom:
+                self.chrom_lookup = {}
+                for chr in self.data.chrom_stats.keys():
+                    short = chr.split(split_chrom)[0]
+                    self.chrom_lookup[short] = chr
+
+                self.covered_strands = [chrom+'+' for chrom in self.chrom_lookup.keys()] + [chrom+'-' for chrom in self.chrom_lookup.keys()]
+            else:
+                self.covered_strands = [chrom+'+' for chrom in self.data.keys()] + [chrom+'-' for chrom in self.data.keys()]
+            self.logger.info("file provides {0} sequences.".format(len(self.data.chrom_stats)))
+
+        except IOError:
+            # all fails: return Ns only
+            self.logger.warning("Could not access '{0}'. Switching to dummy mode (only Ns)".format(fname))
+            self.get_data = self.get_dummy
+            self.get_oriented = self.get_dummy
+            self.covered_strands = [chrom+'+',chrom+'-']
+            self.no_data = True
+
+        # TODO: maybe remove this if not needed
+        self.get = self.get_oriented
+        #self.logger.debug("covered strands: '{0}'".format(",".join(self.covered_strands[:10])) )
+        t2 = time()
+        self.logger.debug("opening 2bit file took {0:.1f}ms, entire constructir {1:.1f}ms".format( (t1-t0)*1000., (t2-t0)*1000. ) )
+
+    def get_data(self,chrom,start,end,sense):
+        if self.chrom_lookup:
+            chrom = self.chrom_lookup[chrom]
+
+        seq = self.data[chrom][start:end]
+            
+        if sense == "-":
+            seq = complement(seq)
+
+        return seq
+
+
+
+class GenomeCache(object):
+
+    # ensure that only one GenomeCache object is created per path during run-time
+    __metaclass__ = Singleton 
+
+    def __init__(self,path):
+        self.cached = {}
+        self.path = path
+        self.logger = logging.getLogger("byo.io.genome_accessor.GenomeCache")
+
+    def __getitem__(self,name):
+        if not name in self.cached:
+            self.logger.debug("{0} not in genome cache".format(name))
+            
+            # first look for 2bit file
+            self.cached[name] = Track(self.path,TwoBitAccessor,system=name,split_chrom='.')
+            if self.cached[name].no_data:
+                # not found, look for fasta or LZ compressed 
+                self.cached[name] = Track(self.path,GenomeAccessor,system=name,split_chrom='.')
+                
+            self.logger.info("{0} genomes loaded".format(len(self.cached)))
+        
+        return self.cached[name]
+
+
 
 class IndexedFasta(object):
     def __init__(self,fname,split_chrom="",lz = False, **kwargs):
@@ -199,45 +299,6 @@ class GenomeAccessor(Accessor):
 
     def get_dummy(self,chrom,start,end,sense):
         return "N"*int(end-start)
-
-
-class TwoBitAccessor(Accessor):
-    def __init__(self, path,chrom,sense,system=None,**kwargs):
-        super(TwoBitAccessor,self).__init__(path,chrom,sense,system=system,**kwargs)
-        import twobitreader as TB
-        self.logger = logging.getLogger('byo.io.TwoBitAccessor')
-        self.logger.debug("opening genomic sequence for chromosome %s from '%s'" % (chrom,path))
-
-        self.system = system
-        self.data = None
-        
-        # try to access the whole genome, using indexing for fast lookup
-        fname = os.path.join(path,"{0}.2bit".format(system))
-        try:
-            self.data = TB.TwoBitFile(fname)
-            self.data.chrom_stats = self.data.sequence_sizes()
-            self.covered_strands = [chrom+'+' for chrom in self.data.keys()] + [chrom+'-' for chrom in self.data.keys()]
-
-        except IOError:
-            # all fails: return Ns only
-            self.logger.warning("Could not access '{0}'. Switching to dummy mode (only Ns)".format(fname))
-            self.get_data = self.get_dummy
-            self.get_oriented = self.get_dummy
-            self.covered_strands = [chrom+'+',chrom+'-']
-            self.no_data = True
-
-        # TODO: maybe remove this if not needed
-        self.get = self.get_oriented
-
-
-    def get_data(self,chrom,start,end,sense):
-        print "TRALALA?"
-        seq = self.data[chrom][start:end]
-            
-        if sense == "-":
-            seq = complement(seq)
-
-        return seq
 
 
 
