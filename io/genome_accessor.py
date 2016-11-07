@@ -5,6 +5,33 @@ import logging
 from byo.track import Accessor, Track
 from byo import complement, rev_comp
 
+import urllib2
+
+class RemoteCache(object):
+    def __init__(self, urlbase):
+        self.urlbase = urlbase
+        self.logger = logging.getLogger("byo.io.genome_accessor.RemoteCache('{0}')".format(urlbase))
+
+    def __getitem__(self, genome):
+        self.logger.debug('getitem {0}'.format(genome))
+            
+        class Proxy(object):
+            no_data = False
+            def get_oriented(this, chrom, start, end, strand):
+                url = "{base}/{genome}/{chrom}:{start}-{end}{strand}".format(
+                    base = self.urlbase, 
+                    genome=genome, 
+                    chrom=chrom, 
+                    start=start, 
+                    end=end, 
+                    strand=strand
+                )
+                self.logger.debug('requesting "{0}"'.format(url))
+                res = urllib2.urlopen(url)
+                return res.read()
+
+        return Proxy()
+
 
 class Singleton(type):
     """
@@ -20,6 +47,44 @@ class Singleton(type):
         return cls._instances[key]
 
 
+
+
+class GenomeCache(object):
+
+    # ensure that only one GenomeCache object is created per path during run-time
+    __metaclass__ = Singleton 
+
+    def __init__(self,path):
+        self.cached = {}
+        self.path = path
+        self.logger = logging.getLogger("byo.io.genome_accessor.GenomeCache")
+
+    def __getitem__(self,name):
+        if not name in self.cached:
+            self.logger.debug("{0} not in genome cache".format(name))
+            
+            # first look for 2bit file
+            self.cached[name] = Track(self.path,TwoBitAccessor,system=name,split_chrom='.')
+            if self.cached[name].no_data:
+                # not found, look for fasta or LZ compressed 
+                self.cached[name] = Track(self.path,GenomeAccessor,system=name,split_chrom='.')
+                
+            self.logger.info("{0} genomes loaded".format(len(self.cached)))
+        
+        return self.cached[name]
+
+    def available_genomes(self):
+        import glob
+        def listit(fmt):
+            return [os.path.splitext(
+                os.path.basename(f)
+            )[0] for f in sorted(glob.glob(self.path+'/*.{0}'.format(fmt)))]
+            
+        twobit = listit('2bit')
+        fasta = listit('fa')
+        lz = listit('lz')
+        
+        return twobit + fasta + lz
 
 class TwoBitAccessor(Accessor):
     def __init__(self, path,chrom,sense,system=None, split_chrom="", **kwargs):
@@ -53,6 +118,7 @@ class TwoBitAccessor(Accessor):
             self.logger.info("file provides {0} sequences.".format(len(self.data.chrom_stats)))
 
         except IOError:
+            t1 = time()
             # all fails: return Ns only
             self.logger.warning("Could not access '{0}'. Switching to dummy mode (only Ns)".format(fname))
             self.get_data = self.get_dummy
@@ -64,7 +130,10 @@ class TwoBitAccessor(Accessor):
         self.get = self.get_oriented
         #self.logger.debug("covered strands: '{0}'".format(",".join(self.covered_strands[:10])) )
         t2 = time()
-        self.logger.debug("opening 2bit file took {0:.1f}ms, entire constructir {1:.1f}ms".format( (t1-t0)*1000., (t2-t0)*1000. ) )
+        self.logger.debug("opening 2bit file took {0:.1f}ms, entire constructor {1:.1f}ms".format( (t1-t0)*1000., (t2-t0)*1000. ) )
+
+    def get_dummy(self, chrom, start, end, sense):
+        return "N" *(end-start)
 
     def get_data(self,chrom,start,end,sense):
         if self.chrom_lookup:
@@ -76,32 +145,6 @@ class TwoBitAccessor(Accessor):
             seq = complement(seq)
 
         return seq
-
-
-
-class GenomeCache(object):
-
-    # ensure that only one GenomeCache object is created per path during run-time
-    __metaclass__ = Singleton 
-
-    def __init__(self,path):
-        self.cached = {}
-        self.path = path
-        self.logger = logging.getLogger("byo.io.genome_accessor.GenomeCache")
-
-    def __getitem__(self,name):
-        if not name in self.cached:
-            self.logger.debug("{0} not in genome cache".format(name))
-            
-            # first look for 2bit file
-            self.cached[name] = Track(self.path,TwoBitAccessor,system=name,split_chrom='.')
-            if self.cached[name].no_data:
-                # not found, look for fasta or LZ compressed 
-                self.cached[name] = Track(self.path,GenomeAccessor,system=name,split_chrom='.')
-                
-            self.logger.info("{0} genomes loaded".format(len(self.cached)))
-        
-        return self.cached[name]
 
 
 

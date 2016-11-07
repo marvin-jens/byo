@@ -7,10 +7,11 @@ import byo.config
 import os,re, sys
 from logging import debug,warning,error,info
 from numpy import uint32, float32
+from byo.io.genome_accessor import GenomeCache
 
 root = byo.config.system_root
 name = "hg19"
-genome = Track(os.path.join(root,"genomes"),GenomeAccessor,system=name)
+genome = GenomeCache(os.path.join(root,"genomes"))[name]
 
 class LazyTranscriptLoader(object):
     def __init__(self,system = None):

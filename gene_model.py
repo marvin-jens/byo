@@ -60,7 +60,11 @@ class ExonChain(object):
         self.tx_start,self.tx_end = [self.start,self.end][::self.dir]
         if not self.name:
             # if the chain gets altered subsequently, don't loose the name
-            self.name = "ExonChain (%s:%d-%d%s) %s %s" % (self.chrom,self.start,self.end,self.sense,str(self.exon_starts),str(self.exon_ends))
+            self.name = "ExonChain_%s:%d-%d%s__%s__%s" % (
+                self.chrom,self.start,self.end,self.sense,
+                ",".join([str(s) for s in self.exon_starts]),
+                ",".join([str(e) for e in self.exon_ends])
+            )
 
     @property
     def intron_chain(self):
@@ -163,7 +167,7 @@ class ExonChain(object):
         for i,(start,end) in enumerate(self.intron_bounds[::self.dir]):
             yield "intron", ExonChain(self.chrom,self.sense,[start,],[end,])
 
-    def intersect(self,names,start,end,expand=False):
+    def intersect(self, names, start, end, expand=False):
         # TODO: Clean this up
         #print "INTERSECT",names,start,end
         start,end = min(start,end),max(start,end)
@@ -259,8 +263,8 @@ class ExonChain(object):
         else:
             return after,chain,before
 
-    def cut(self,start,end):
-        before,chain,after = self.intersect(['before','cut','after'],start,end,expand=False)
+    def cut(self,start,end, expand=False):
+        before,chain,after = self.intersect(['before','cut','after'],start,end,expand=expand)
         return chain
     
     #def __eq__(self,other):
@@ -312,12 +316,36 @@ class ExonChain(object):
         exonlist = ",".join(map(str,self.exon_bounds))
         return "{self.chrom}:{self.start}-{self.end}{self.sense} spliced_length={self.spliced_length} exons: {exonlist}".format(self=self, exonlist=exonlist)
 
-    def bed12(self,color="255,0,0"):
+    def bed12_format(self,color="255,0,0"):
         block_sizes = [str(e-s) for s,e in self.exon_bounds]
         block_starts = [str(s-self.start) for s in self.exon_starts]
         
-        cols = [self.chrom,self.start,self.end,self.name,getattr(self,"score",0),self.sense,self.CDS.start,self.CDS.end,color,self.exon_count,",".join(block_sizes),",".join(block_starts)]
+        if getattr(self,"CDS",None):
+            cds_start = self.CDS.start
+            cds_end = self.CDS.end
+        else:
+            cds_start = self.end
+            cds_end = self.end
+
+        cols = [self.chrom, self.start, self.end, self.name, getattr(self,"score",0), self.sense, cds_start, cds_end, color, self.exon_count, ",".join(block_sizes), ",".join(block_starts)]
         return "\t".join([str(c) for c in cols])
+
+    def ucsc_format(self):
+        exonstarts = ",".join([str(s) for s in self.exon_starts])
+        exonends = ",".join([str(e) for e in self.exon_ends])
+        #exonframes = ",".join([str(f) for f in self.exon_frames])
+        # TODO: fix exon-frames
+        exonframes = ",".join(["-1" for e in self.exon_ends])
+
+        if getattr(self,"CDS",None):
+            cds_start = self.CDS.start
+            cds_end = self.CDS.end
+        else:
+            cds_start = self.end
+            cds_end = self.end
+            
+        out = (-1,self.name,self.chrom,self.sense,self.start,self.end,cds_start,cds_end,self.exon_count,exonstarts,exonends,getattr(self,"score",0),getattr(self,"gene_id",self.name), "unk","unk",exonframes)
+        return "\t".join([str(o) for o in out])
         
     def __len__(self):
         """
@@ -444,21 +472,7 @@ class Transcript(ExonChain):
 
     # UCSC table format output
     def __str__(self):
-        exonstarts = ",".join([str(s) for s in self.exon_starts])
-        exonends = ",".join([str(e) for e in self.exon_ends])
-        #exonframes = ",".join([str(f) for f in self.exon_frames])
-        # TODO: fix exon-frames
-        exonframes = ",".join(["-1" for e in self.exon_ends])
-
-        if self.CDS:
-            cds_start = self.CDS.start
-            cds_end = self.CDS.end
-        else:
-            cds_start = self.end
-            cds_end = self.end
-            
-        out = (-1,self.name,self.chrom,self.sense,self.start,self.end,cds_start,cds_end,self.exon_count,exonstarts,exonends,str(self.score),self.gene_id,"unk","unk",exonframes)
-        return "\t".join([str(o) for o in out])
+        return self.ucsc_format()
 
 ucsc_table_format = "## bin:int \t name:str \t chrom:str \t sense:str \t txStart:int \t txEnd:int \t cdsStart:int \t cdsEnd:int \t exonCount:int \t exonStarts:intlist \t exonEnds:intlist \t id:str \t name2:str \t cdsStartStat:str \t cdsEndStat:str \t exonFrames:intlist"
 
