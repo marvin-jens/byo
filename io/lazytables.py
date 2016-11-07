@@ -67,7 +67,11 @@ class NamedTupleImporter(object):
         if type(src) == file:
             self.src = src
         else:
-            self.src = file(src)
+            if src.endswith('.gz'):
+                import gzip
+                self.src = gzip.GzipFile(src,'r')
+            else:
+                self.src = file(src)
 
         self.mangling = mangling
         self.debug = debug

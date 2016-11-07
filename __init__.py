@@ -51,9 +51,27 @@ def complement(s):
 def rev_comp(seq):
     return complement(seq)[::-1]
 
+
+class ModelSystemDB(object):
+    def __init__(self):
+        self.systems = {}
+
+    def __getitem__(self, name):
+        from byo.model_system import ModelSystem
+        if not name in self.systems:
+            self.systems[name] = ModelSystem(name)
+
+        return self.systems[name]
+    
+    def __getattr__(self, name):
+        return self[name]
+    
+
+systems = ModelSystemDB()
+
+
 if __name__=='__main__':
     seq = 'attaCGtTTTTGCCGCTTAaaaaaaaaa'
     print seq
     print complement(seq)
     print rev_comp(seq)
-

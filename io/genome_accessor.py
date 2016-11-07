@@ -112,9 +112,7 @@ class TwoBitAccessor(Accessor):
                     short = chr.split(split_chrom)[0]
                     self.chrom_lookup[short] = chr
 
-                self.covered_strands = [chrom+'+' for chrom in self.chrom_lookup.keys()] + [chrom+'-' for chrom in self.chrom_lookup.keys()]
-            else:
-                self.covered_strands = [chrom+'+' for chrom in self.data.keys()] + [chrom+'-' for chrom in self.data.keys()]
+            self.covered_strands = '*'
             self.logger.info("file provides {0} sequences.".format(len(self.data.chrom_stats)))
 
         except IOError:
