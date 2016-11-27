@@ -283,6 +283,15 @@ class ExonChain(object):
     def key(self):
         return (self.chrom,self.sense,tuple(self.exon_starts),tuple(self.exon_ends))
     
+    @property
+    def key_str(self):
+        return "{self.chrom}:{es}-{ee}{self.sense}".format(
+            self=self, 
+            es = ",".join([str(x) for x in self.exon_starts]),
+            ee = ",".join([str(x) for x in self.exon_ends])
+        )
+    
+            
     def __add__(self,other):
         """
         concatenates two non-overlapping exon-chains, returning a new ExonChain object
