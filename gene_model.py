@@ -139,12 +139,17 @@ class ExonChain(object):
         return join([get_func(self.chrom,start,end,self.sense,**kwargs) for start,end in self.exon_bounds][::self.dir])
 
     @property
+    def _system(self):
+        import byo.model_system
+        return byo.model_system.ModelSystem(self.system)
+
+    @property
     def unspliced_sequence(self):
-        return self.system.genome.get_oriented(self.chrom,self.start,self.end,self.sense)
+        return self._system.genome.get_oriented(self.chrom,self.start,self.end,self.sense)
 
     @property
     def spliced_sequence(self):
-        return self.splice(self.system.genome)
+        return self.splice(self._system.genome)
 
     @property
     def splice_sites(self):
@@ -165,7 +170,11 @@ class ExonChain(object):
     @property
     def introns_as_chains(self):
         for i,(start,end) in enumerate(self.intron_bounds[::self.dir]):
-            yield "intron", ExonChain(self.chrom,self.sense,[start,],[end,])
+            yield ExonChain(self.chrom, self.sense, [start,], [end,])
+
+    def cut(self, start, end, expand=False):
+        names = ["before", "cut", "after"]
+        return self.intersect(names, start, end, expand=expand)
 
     def intersect(self, names, start, end, expand=False):
         # TODO: Clean this up
@@ -281,7 +290,7 @@ class ExonChain(object):
         
     @property
     def key(self):
-        return (self.chrom,self.sense,tuple(self.exon_starts),tuple(self.exon_ends))
+        return (self.chrom, self.sense, tuple(self.exon_starts), tuple(self.exon_ends))
     
     @property
     def key_str(self):
@@ -379,11 +388,16 @@ Locus = namedtuple("Locus","name, chrom, sense, start, end, category")
 
 
 class Transcript(ExonChain):
-    def __init__(self,name,chrom,sense,exon_starts,exon_ends,cds,score=0,system=None,description={}):
+    def __init__(self, name, chrom, sense, exon_starts, exon_ends, cds, score=0, system=None, description={}, **kwargs):
         # Initialize underlying ExonChain
         super(Transcript,self).__init__(chrom,sense,exon_starts,exon_ends,system=system)
         self.score = score
         self.category = "transcript"
+        self.transcript_id = kwargs.get('transcript_id', name)
+        self.gene_id = kwargs.get('gene_id', name)
+        self.gene_name = kwargs.get('gene_name', name)
+        self.gene_type = kwargs.get('gene_type', 'unknown')
+
         self.name = name
         self.description = description
 
@@ -450,14 +464,14 @@ class Transcript(ExonChain):
             yield Locus("%s.CDSstart" % self.name,self.chrom,self.sense,cds_start,cds_start+1,"CDSstart")
             yield Locus("%s.CDSend" % self.name,self.chrom,self.sense,cds_end,cds_end+1,"CDSend")
 
-    @property
-    def gene_id(self):
-        gene_id = getattr(self, "name2", None)
-        if not gene_id:
-            gene_id = self.description.get("gene_id", self.description.get("name2", self.name))
-        if not gene_id:
-            return self.name
-        return gene_id
+    # @property
+    # def gene_id(self):
+    #     gene_id = getattr(self, "name2", None)
+    #     if not gene_id:
+    #         gene_id = self.description.get("gene_id", self.description.get("name2", self.name))
+    #     if not gene_id:
+    #         return self.name
+    #     return gene_id
 
     def get_uORFs(self, min_len = 2):
         """
@@ -712,7 +726,7 @@ class CircRNA(Transcript):
             return self.EmptyChain()
         
         tx_name = self.gene_id.split(':')[3]
-        return self.system.transcript_models[tx_name]
+        return self._system.transcript_models[tx_name]
 
     @property
     def mRNA_CDS(self):
@@ -771,7 +785,7 @@ def transcripts_from_UCSC(fname,system=None,tx_class = None,gene_names = {},fix_
     ucsc_type_hints = dict(txStart="int",txEnd="int",cdsStart="int",cdsEnd="int",exonCount="int",exonStarts="intlist",exonEnds="intlist",exonFrames="intlist")
     return LazyImporter(fname,factory,"name",type_hints=ucsc_type_hints,renames=dict(strand="sense"),parse_comments=True,descr=table_format,**kwargs)
 
-def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thresh=20, system = None):
+def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t", ORF_thresh=20, system = None):
     import byo.io.gff
     #debug("parsing sorted GTF '%s'" % fname)
 
@@ -782,32 +796,55 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thr
     sense = "NN"
     current_tx = "NN"
 
+    n = 0
+    cds_min = None
+    cds_max = None
+    ignore_records = set(['gene', 'start_codon', 'stop_codon', 'UTR', 'transcript'])
     for i,gff in enumerate(byo.io.gff.gff_importer(fname,fix_chr=False)):
         #sys.stderr.write(".")
-        if gff.type != "exon":
+        if gff.type in ignore_records:
             continue
-
         attrs = byo.io.gff.dict_from_attrstr(gff.attr_str)
-        tx_id = attrs.get("transcript_id","")
-        tx_id = attrs.get("ID",tx_id)
-        tx_id = attrs.get("Name",tx_id)
-        tx_id = attrs.get("Parent",tx_id)
+        tx_id = attrs.get("transcript_id", "unknown_tx_{}".format(n))
+        # tx_id = attrs.get("ID",tx_id)
+        # tx_id = attrs.get("Name",tx_id)
+        # tx_id = attrs.get("Parent",tx_id)
         
-        if not tx_id:
-            # GFF3
-            tx_id = attrs["Parent"].split(":")[1]
+        # if not tx_id:
+        #     # GFF3
+        #     tx_id = attrs["Parent"].split(":")[1]
 
         #sys.stderr.write(tx_id)
         if tx_id != current_tx:
             if exon_starts:
-                yield Transcript(current_tx,chrom,sense,exon_starts,exon_ends,(exon_starts[0],exon_starts[0]),description=shared_attributes, system=system)
-                exon_starts = []
-                exon_ends = []
-                shared_attributes = {}
+                if cds_min is None:
+                    cds = (exon_starts[0], exon_starts[0])
+                else:
+                    cds = (cds_min, cds_max)
+
+                yield Transcript(current_tx, chrom, sense, exon_starts, exon_ends, cds, system=system, **shared_attributes)
+
+            exon_starts = []
+            exon_ends = []
+            shared_attributes = {}
+            cds_min = None
+            cds_max = None
+            n += 1
 
             current_tx = tx_id
             chrom = gff.chrom
             sense = gff.sense
+
+        if gff.type == 'CDS':
+            if cds_min is None:
+                cds_min = gff.start -1
+
+            cds_max = max(gff.end, cds_max)
+            # print "encountered CDS record. current CDS", cds_min, cds_max
+            continue
+
+        if gff.type != "exon":
+            continue
 
         shared_attributes.update(attrs)
 
@@ -815,7 +852,12 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thr
         exon_ends.append(gff.end)
 
     if exon_starts:
-        yield Transcript(tx_id,chrom,sense,exon_starts,exon_ends,(exon_starts[0],exon_starts[0]),description=shared_attributes, system=system)
+        if cds_min is None:
+            cds = (exon_starts[0], exon_starts[0])
+        else:
+            cds = (cds_min, cds_max)
+
+        yield Transcript(tx_id,chrom,sense,exon_starts,exon_ends,cds,description=shared_attributes, system=system, **shared_attributes)
 
 
 #def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thresh=20):
