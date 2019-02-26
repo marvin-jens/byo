@@ -47,22 +47,27 @@ class BAMAccessor(Accessor):
         import pysam
         try:
             self.bam = pysam.Samfile(path,"rb")
+            self.meta_data = dict(mapped_reads = self.bam.mapped)
+            if not chrom in self.bam.references:
+                warning("chromosome '%s' not in BAM '%s'. Switching to dummy mode (only zeros)" % (chrom,path))
+                self.get_data = self.get_dummy
+                self.get_sum = self.get_sum_dummy
+
+            if read_count:
+                self.get_sum = self.get_read_count
+
         except IOError:
             warning("Could not access '%s'. Switching to dummy mode (only zeros)" % path)
-            self.get_data = self.get_dummy
             self.get_sum = self.get_sum_dummy
-
-        if not chrom in self.bam.references:
-            warning("chromosome '%s' not in BAM '%s'. Switching to dummy mode (only zeros)" % (chrom,path))
-            self.get_data = self.get_dummy
-            self.get_sum = self.get_sum_dummy
+            if full_reads:
+                self.get_data = self.get_dummy_raw
+            else:
+                self.get_data = self.get_dummy
             
-        if read_count:
-            self.get_sum = self.get_read_count
-
-        if full_reads:
-            self.get_data = self.get_raw
-            self.get_sum = self.get_sum_dummy
+        else:
+            if full_reads:
+                self.get_data = self.get_raw
+                self.get_sum = self.get_sum_dummy
 
         # register for all chroms/strands
         self.covered_strands = "*"
@@ -165,3 +170,6 @@ class BAMAccessor(Accessor):
         
     def get_dummy(self,chrom,start,end,sense,**kwargs):
         return numpy.zeros(end-start,dtype=self.dtype)
+
+    def get_dummy_raw(self,chrom,start,end,sense,**kwargs):
+        return []

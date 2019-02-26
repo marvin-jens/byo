@@ -16,6 +16,7 @@ class Accessor(object):
         # This can be set to true to signal missing data to track level 
         # w/o using dummy track functionality
         self.no_data = False
+        self.meta_data = {}
 
     def get_data(self,chrom,start,end,sense,**kwargs):
         return []
@@ -66,6 +67,7 @@ class Track(object):
         self.path = path
         self.mode = mode
         self.acc_cache = {}
+        self.meta_data = {}
         self.accessor = accessor
         self.kwargs = kwargs
         self.sense_specific = to_bool(sense_specific)
@@ -100,6 +102,7 @@ class Track(object):
         if not ID in self.acc_cache:
             self.logger.debug("Cache miss for chrom='%s' sense='%s'. creating new accessor" % (chrom,sense))
             acc = self.accessor(self.path,chrom,sense,**(self.kwargs))
+            self.meta_data.update(acc.meta_data)
             if acc.no_data:
                 self.no_data = True
             
@@ -175,6 +178,9 @@ class Track(object):
         else:
             return chrom
 
+    def __str__(self):
+        return "Track({self.accessor}, {self.mode}, {self.path}) meta_data={self.meta_data}".format(self=self)
+
 from numpy import float32
 
 trackrc = """
@@ -203,7 +209,7 @@ def load_track(path,default_accessor="ArrayAccessor",**kwargs):
     if path.endswith('.fa') or path.endswith('.fna') or path.endswith('.fasta'):
         system,ext = os.path.splitext(os.path.basename(path))
         return Track(os.path.dirname(path),track_accessors.GenomeAccessor,system=system,**kwargs)
-    elif path.endswith(".bam") and os.path.isfile(path):
+    elif path.endswith(".bam"):
         return Track(path,track_accessors.BAMAccessor,description="BAM('%s')" % os.path.basename(path), **kwargs)
         
     track_dict = dict(accessor_type=default_accessor,description=os.path.basename(path))
