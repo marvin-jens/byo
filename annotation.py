@@ -30,7 +30,7 @@ def categorize(cats):
     return seg + "_" + res
 
 def cat_from_name(name):
-    parts = name.split('.')
+    parts = name.split('/')
     end = parts[-1]
     if end in terminals:
         return end
@@ -41,11 +41,12 @@ def cat_from_name(name):
             return 'intron'
     return end
 
-def summarize(ann):
+def summarize(q):
+    # print q
     cat_count = defaultdict(int)
     tx_set = set()
     tx_exon_set = set()
-    for start, end, (name, tx) in ann:
+    for name, tx in zip(q.match_identifiers, q.match_objects):
         tx_set.add(tx)
         cat = cat_from_name(name)
         cat_count[cat] += 1
@@ -55,29 +56,65 @@ def summarize(ann):
     return cat_count, tx_set, tx_exon_set
 
 
+class Query(object):
+    def __init__(self, realm, coord=None, collapsed=False, unique=False, identifier=None, get_objects=False, **kwargs):
+        self.realm = realm
+        self.coord = coord
+        self.collapsed = collapsed
+        self.unique = unique
+        if unique:
+            # unique implies collapsed or things get inconsistent
+            self.collapsed = True
+
+        self.get_objects = get_objects
+        self.identifier = identifier
+
+    def __str__(self):
+        s = "Query({self.realm}, coord={self.coord}, identifier={self.identifier}, collapsed={self.collapsed}, unique={self.unique})".format(self=self)
+        if hasattr(self, "status"):
+            s += " status={self.status}".format(self=self)
+        if hasattr(self, "match_identifiers"):
+            s += "-> matches={}".format(",".join(self.match_identifiers))
+        
+        return s
+    
+    def __add__(self, q):
+        if self.realm != q.realm:
+            raise ValueError("realm mismatch!")
+        
+        Q = Query(self.realm)
+
+        # concatenate matches
+        Q.match_starts = getattr(self, "match_starts", []) + getattr(q, "match_starts", [])
+        Q.match_ends = getattr(self, "match_ends", []) + getattr(q, "match_ends", [])
+        Q.match_identifiers = getattr(self, "match_identifiers", []) + getattr(q, "match_identifiers", [])
+        Q.match_objects = getattr(self, "match_objects", []) + getattr(q, "match_objects", [])
+
+        return Q
+ 
+
 class AnnotationTrack(object):
-    def __init__(self, url="tcp://localhost:13370"):
+    def __init__(self, realm, url="tcp://localhost:13370"):
+        self.realm = realm
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REQ)
         self.url = url
         self.socket.connect(self.url)
 
-    def get_oriented(self, chrom, start, end, sense, pattern=""):
-        query = ("annotate", chrom, int(start), int(end), sense)
-        self.socket.send_pyobj(query)
-        res = self.socket.recv_pyobj()
-        if filter:
-            res = [r for r in res if re.search(pattern, r[2][0])]
-        return res
-
-    def get_transcripts_by_id(self, transcript_id):
-        query = ("tx_for_txid", transcript_id)
+    def get_oriented(self, chrom, start, end, sense, **kwargs):
+        query = Query(self.realm, coord = (chrom, int(start), int(end), sense), **kwargs)
         self.socket.send_pyobj(query)
         res = self.socket.recv_pyobj()
         return res
 
-    def get_transcripts_by_gene(self, gene_id):
-        query = ("tx_forgene", gene_id)
+    def get_transcripts_by_id(self, transcript_id, **kwargs):
+        query = Query(self.realm, identifier=("transcript_id", transcript_id), **kwargs)
+        self.socket.send_pyobj(query)
+        res = self.socket.recv_pyobj()
+        return res
+
+    def get_transcripts_by_gene(self, gene_id, **kwargs):
+        query = Query(self.realm, identifier=("gene_id", gene_id), **kwargs)
         self.socket.send_pyobj(query)
         res = self.socket.recv_pyobj()
         return res
@@ -103,29 +140,7 @@ class ExpressionTrack(object):
             tpm += coll.expr[name]
         return tpm
 
-
-class Query(object):
-    def __init__(self, realm, coord=None, collapsed=False, unique=False, identifier=None, get_objects=False, **kwargs):
-        self.realm = realm
-        self.coord = coord
-        self.collapsed = collapsed
-        self.unique = unique
-        if unique:
-            # unique implies collapsed or things get inconsistent
-            self.collapsed = True
-
-        self.get_objects = get_objects
-        self.identifier = identifier
-
-    def __str__(self):
-        s = "Query({self.realm}, coord={self.coord}, identifier={self.identifier}, collapsed={self.collapsed}, unique={self.unique})".format(self=self)
-        if hasattr(self, "status"):
-            s += " status={self.status}".format(self=self)
-        if hasattr(self, "match_identifiers"):
-            s += "-> matches={}".format(",".join(self.match_identifiers))
-        
-        return s
-            
+           
 class AnnotationServer(object):
     def __init__(self, realm="annotation"):
         self.realm = realm
@@ -218,7 +233,7 @@ class AnnotationServer(object):
 
             q.match_identifiers = fs[fids]
             if q.get_objects:
-                q.match_objects = [self.transcripts[fid] for fid in q.match_identifiers]
+                q.match_objects = [self.transcripts[fid.split('/')[0]] for fid in q.match_identifiers]
         
         elif q.identifier:
             kind, name = q.identifier
@@ -245,7 +260,9 @@ class AnnotationServer(object):
         while True:
             query = socket.recv_pyobj()
             # print "received request", query
-            socket.send_pyobj(self.Q(query))
+            res = self.Q(query)
+            # print "sending result", res
+            socket.send_pyobj(res)
 
 
 if __name__ == "__main__":
@@ -253,18 +270,18 @@ if __name__ == "__main__":
     ann = AnnotationServer(realm=sys.argv[1])
     ann.load_transcripts(sys.argv[2])
     ann.build_ncls()
-    q = ann.Q(Query("hg19/gencode28", identifier=("gene_id", "SAMD11")))
-    exon = list(q.match_objects[0].exons)[1]
 
-    q.identifier = None
-    q.coord = (exon.chrom, exon.start, exon.end, exon.sense)
-    q.collapsed = True
-    q.unique = True
-    q = ann.Q(q)
-    print q
+    # q = ann.Q(Query("hg19/gencode28", identifier=("gene_id", "SAMD11")))
+    # exon = list(q.match_objects[0].exons)[1]
+    # print exon
+    # q.identifier = None
+    # q.coord = (exon.chrom, exon.start, exon.end, exon.sense)
+    # q.collapsed = True
+    # q.unique = True
+    # q = ann.Q(q)
+    # print q
     # for start, end, name in zip(q.match_starts, q.match_ends, q.match_identifiers):
     #     print start, end, name
 
-
-    ann.serve_forever(bind_addr="tcp://*:13371")
+    ann.serve_forever(bind_addr="tcp://*:13370")
 

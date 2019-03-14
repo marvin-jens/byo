@@ -161,12 +161,12 @@ class ExonChain(object):
     @property
     def exons(self):
         for i,(start,end) in enumerate(self.exon_bounds[::self.dir]):
-            yield Locus("%s.exon%02d" % (self.name,i+1),self.chrom,self.sense,start,end,"exon")
+            yield Locus("%s/exon.%02d" % (self.name,i+1),self.chrom,self.sense,start,end,"exon")
 
     @property
     def introns(self):
         for i,(start,end) in enumerate(self.intron_bounds[::self.dir]):
-            yield Locus("%s.intron%02d" % (self.name,i+1),self.chrom,self.sense,start,end,"intron")
+            yield Locus("%s/intron.%02d" % (self.name,i+1),self.chrom,self.sense,start,end,"intron")
 
     @property
     def introns_as_chains(self):
@@ -437,15 +437,15 @@ class Transcript(ExonChain):
     def segments(self):
         if self.UTR5:
             UTR = self.UTR5
-            yield Locus("%s.5UTR" % self.name,UTR.chrom,UTR.sense,UTR.start,UTR.end,"5UTR")
+            yield Locus("%s/UTR5" % self.name,UTR.chrom,UTR.sense,UTR.start,UTR.end,"5UTR")
 
         if self.UTR3:
             UTR = self.UTR3
-            yield Locus("%s.3UTR" % self.name,UTR.chrom,UTR.sense,UTR.start,UTR.end,"3UTR")
+            yield Locus("%s/UTR3" % self.name,UTR.chrom,UTR.sense,UTR.start,UTR.end,"3UTR")
 
         if self.CDS:
             CDS = self.CDS
-            yield Locus("%s.CDS" % self.name,CDS.chrom,CDS.sense,CDS.start,CDS.end,"CDS")
+            yield Locus("%s/CDS" % self.name,CDS.chrom,CDS.sense,CDS.start,CDS.end,"CDS")
 
         for E in self.exons:
             yield E
@@ -456,17 +456,17 @@ class Transcript(ExonChain):
     @property
     def features(self):
         start,end = [self.start,self.end][::self.dir]
-        yield Locus("%s.TSS" % self.name,self.chrom,self.sense,start,start+1,"TSS")
-        yield Locus("%s.PAS" % self.name,self.chrom,self.sense,end,end+1,"PAS")
+        yield Locus("%s/TSS" % self.name,self.chrom,self.sense,start,start+1,"TSS")
+        yield Locus("%s/PAS" % self.name,self.chrom,self.sense,end,end+1,"PAS")
 
         for i,(ss5,ss3) in enumerate(self.splice_sites):
-            yield Locus("%s.intron%02d.5'SS" % (self.name,i+1),self.chrom,self.sense,ss5,ss5+1,"5'SS")
-            yield Locus("%s.intron%02d.3'SS" % (self.name,i+1),self.chrom,self.sense,ss3,ss3+1,"3'SS")
+            yield Locus("%s/intron.%02d/SS5" % (self.name,i+1),self.chrom,self.sense,ss5,ss5+1,"5'SS")
+            yield Locus("%s/intron.%02d/SS3" % (self.name,i+1),self.chrom,self.sense,ss3,ss3+1,"3'SS")
 
         if self.CDS:
             cds_start,cds_end = [self.CDS.start,self.CDS.end][::self.dir]
-            yield Locus("%s.CDSstart" % self.name,self.chrom,self.sense,cds_start,cds_start+1,"CDSstart")
-            yield Locus("%s.CDSend" % self.name,self.chrom,self.sense,cds_end,cds_end+1,"CDSend")
+            yield Locus("%s/CDSstart" % self.name,self.chrom,self.sense,cds_start,cds_start+1,"CDSstart")
+            yield Locus("%s/CDSend" % self.name,self.chrom,self.sense,cds_end,cds_end+1,"CDSend")
 
     # @property
     # def gene_id(self):
