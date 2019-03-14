@@ -88,7 +88,7 @@ class Track(object):
         if "w" in mode:
             # make sure the path exists right away so that the accessors 
             # can flush the actual data there!
-            from byo.io import ensure_path
+            from byo.bio import ensure_path
             ensure_path(self.path)
 
     def load(self,chrom,sense):
@@ -101,8 +101,9 @@ class Track(object):
         ID = chrom+sense
         if not ID in self.acc_cache:
             self.logger.debug("Cache miss for chrom='%s' sense='%s'. creating new accessor" % (chrom,sense))
-            acc = self.accessor(self.path,chrom,sense,**(self.kwargs))
+            acc = self.accessor(self.path, chrom, sense, **(self.kwargs))
             self.meta_data.update(acc.meta_data)
+            # print "made accessor", acc.no_data, acc
             if acc.no_data:
                 self.no_data = True
             
@@ -179,7 +180,7 @@ class Track(object):
             return chrom
 
     def __str__(self):
-        return "Track({self.accessor}, {self.mode}, {self.path}) meta_data={self.meta_data}".format(self=self)
+        return "Track({self.accessor}, {self.mode}, {self.path}) meta_data={self.meta_data} no_data={self.no_data}".format(self=self)
 
 from numpy import float32
 
@@ -205,7 +206,7 @@ def load_track(path,default_accessor="ArrayAccessor",**kwargs):
     """
     from ConfigParser import SafeConfigParser as ConfigParser, NoSectionError
     import os
-    import byo.io.track_accessors as track_accessors
+    import byo.bio.track_accessors as track_accessors
     if path.endswith('.fa') or path.endswith('.fna') or path.endswith('.fasta'):
         system,ext = os.path.splitext(os.path.basename(path))
         return Track(os.path.dirname(path),track_accessors.GenomeAccessor,system=system,**kwargs)
@@ -238,7 +239,7 @@ if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.DEBUG)
     print "lets do some track-testing"
-    from byo.io.track_accessors import ArrayAccessor,TSVAccessor
+    from byo.bio.track_accessors import ArrayAccessor,TSVAccessor
     import numpy
 
     #t = Track('test_track',ArrayAccessor,mode="w",dtype=numpy.uint32,sense_specific=False)

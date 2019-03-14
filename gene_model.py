@@ -4,12 +4,13 @@ from collections import defaultdict,namedtuple
 from bisect import bisect_left,bisect_right
 import numpy as np
 
-from byo.io.gff import gff_importer
+from byo.bio.gff import gff_importer
 from byo.protein import all_orfs,translate
 from byo import protein
 
 #from byo.transcript import ProcessedTranscript
 #from byo.locus import Locus
+Locus = namedtuple("Locus","name, chrom, sense, start, end, category")
 
 import logging
 from logging import debug,warning,info,error
@@ -25,7 +26,7 @@ class ExonChain(object):
     generating names/annotation. All of that is handled by the "Transcript" subclass.
     """
 
-    def __init__(self,chrom,sense,exon_starts,exon_ends,system=None):
+    def __init__(self, chrom, sense, exon_starts, exon_ends, system=None):
         self.system = system
         self.chrom = chrom
         self.sense = sense
@@ -384,15 +385,13 @@ class ExonChain(object):
     def EmptyChain(self):
         return ExonChain(self.chrom, self.sense, [0], [0], system=self.system)
 
-Locus = namedtuple("Locus","name, chrom, sense, start, end, category")
-
 
 class Transcript(ExonChain):
     def __init__(self, name, chrom, sense, exon_starts, exon_ends, cds, score=0, system=None, description={}, **kwargs):
         # Initialize underlying ExonChain
         super(Transcript,self).__init__(chrom,sense,exon_starts,exon_ends,system=system)
         self.score = score
-        self.category = "transcript"
+        self.category = "transcript/body"
         self.transcript_id = kwargs.get('transcript_id', name)
         self.gene_id = kwargs.get('gene_id', name)
         self.gene_name = kwargs.get('gene_name', name)
@@ -415,12 +414,17 @@ class Transcript(ExonChain):
             if self.UTR5: 
                 self.UTR5.name = "%s.UTR5" % self.name
                 self.UTR5.gene_id = self.gene_id
+                self.UTR5.category = "transcript/UTR5"
+
             if self.CDS: 
                 self.CDS.name = "%s.CDS" % self.name
                 self.CDS.gene_id = self.gene_id
+                self.UTR5.category = "transcript/CDS"
+
             if self.UTR3: 
                 self.UTR3.name = "%s.UTR3" % self.name
                 self.UTR3.gene_id = self.gene_id
+                self.UTR5.category = "transcript/UTR3"
 
             if self.sense == '+':
                 self.CDS.start_codon = cds_start
@@ -765,7 +769,7 @@ class CircRNA(Transcript):
         
 # factory functions to generate transcript models from downloaded gene-models
 def transcripts_from_UCSC(fname,system=None,tx_class = None,gene_names = {},fix_chr=True,table_format=ucsc_table_format,tx_type=Transcript,**kwargs):
-    from byo.io.lazytables import LazyImporter,NamedTupleImporter
+    from byo.bio.lazytables import LazyImporter,NamedTupleImporter
 
     kw = {}
     if tx_class:
@@ -786,7 +790,7 @@ def transcripts_from_UCSC(fname,system=None,tx_class = None,gene_names = {},fix_
     return LazyImporter(fname,factory,"name",type_hints=ucsc_type_hints,renames=dict(strand="sense"),parse_comments=True,descr=table_format,**kwargs)
 
 def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t", ORF_thresh=20, system = None):
-    import byo.io.gff
+    import byo.bio.gff
     #debug("parsing sorted GTF '%s'" % fname)
 
     shared_attributes = {}
@@ -800,11 +804,11 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t", ORF_th
     cds_min = None
     cds_max = None
     ignore_records = set(['gene', 'start_codon', 'stop_codon', 'UTR', 'transcript'])
-    for i,gff in enumerate(byo.io.gff.gff_importer(fname,fix_chr=False)):
+    for i,gff in enumerate(byo.bio.gff.gff_importer(fname,fix_chr=False)):
         #sys.stderr.write(".")
         if gff.type in ignore_records:
             continue
-        attrs = byo.io.gff.dict_from_attrstr(gff.attr_str)
+        attrs = byo.bio.gff.dict_from_attrstr(gff.attr_str)
         tx_id = attrs.get("transcript_id", "unknown_tx_{}".format(n))
         # tx_id = attrs.get("ID",tx_id)
         # tx_id = attrs.get("Name",tx_id)
@@ -859,6 +863,16 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t", ORF_th
 
         yield Transcript(tx_id,chrom,sense,exon_starts,exon_ends,cds,description=shared_attributes, system=system, **shared_attributes)
 
+def chains_from_bed6(src, system=None):
+    import numpy as np
+    for line in src:
+        chrom, start, end, name, score, strand = line.rstrip().split('\t')
+        chain = ExonChain(chrom, strand, [int(start), ], [int(end), ], system=system)
+        if score == '.':
+            chain.score = np.nan
+        else:
+            chain.score = float(score)
+        yield chain
 
 #def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thresh=20):
 

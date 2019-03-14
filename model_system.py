@@ -1,9 +1,8 @@
 import os,re, sys
 
 from byo.track import Track, load_track
-from byo.io.genome_accessor import GenomeCache, RemoteCache
-from byo.io.annotation import AnnotationAccessor
-#from byo.io.lazytables import NamedTupleImporter as Importer
+from byo.bio.genome_accessor import GenomeCache, RemoteCache
+from byo.bio.annotation import AnnotationAccessor
 import byo.config
 import logging
 
@@ -42,10 +41,10 @@ class ModelSystem(object):
         self.name = name
         self.root = root
         if genome == None:
-            if getattr(byo.config,"genome_server",None):
+            if getattr(byo.config, "genome_server", None):
                 self.genome = RemoteCache(byo.config.genome_server)[name]
             else:
-                self.genome = GenomeCache(os.path.join(root,"genomes"))[name]
+                self.genome = GenomeCache(os.path.join(root, "genomes"))[name]
         else:
             self.genome = genome
 
