@@ -26,13 +26,13 @@ class ExonChain(object):
     generating names/annotation. All of that is handled by the "Transcript" subclass.
     """
 
-    def __init__(self, chrom, sense, exon_starts, exon_ends, system=None):
+    def __init__(self, chrom, sense, exon_starts, exon_ends, system=None, name=""):
         self.system = system
         self.chrom = chrom
         self.sense = sense
         self.exon_starts = np.array(sorted(exon_starts))
         self.exon_ends = np.array(sorted(exon_ends))
-        self.name = ""
+        self.name = name
         self._setup()
     
     def _setup(self):
@@ -171,7 +171,7 @@ class ExonChain(object):
     @property
     def introns_as_chains(self):
         for i,(start,end) in enumerate(self.intron_bounds[::self.dir]):
-            yield ExonChain(self.chrom, self.sense, [start,], [end,])
+            yield ExonChain(self.chrom, self.sense, [start,], [end,], name="%s/intron.%02d" % (self.name,i+1), system=self.system)
 
     def cut(self, start, end, expand=False):
         names = ["before", "cut", "after"]
@@ -247,24 +247,24 @@ class ExonChain(object):
                     keep_ends.append(e)
             return keep_starts,keep_ends
         
-        before_starts, before_ends = remove_empty(before_starts,before_ends)
-        chain_starts, chain_ends = remove_empty(chain_starts,chain_ends)
-        after_starts, after_ends = remove_empty(after_starts,after_ends)
+        before_starts, before_ends = remove_empty(before_starts, before_ends)
+        chain_starts, chain_ends = remove_empty(chain_starts, chain_ends)
+        after_starts, after_ends = remove_empty(after_starts, after_ends)
         
         #print self.system
         #print "CHAIN",chain_starts,chain_ends
         if chain_starts:
-            chain = ExonChain(self.chrom,self.sense,chain_starts,chain_ends,system=self.system)
+            chain = ExonChain(self.chrom, self.sense, chain_starts, chain_ends, system=self.system)
         else:
             chain = self.EmptyChain()
 
         if before_starts:
-            before = ExonChain(self.chrom,self.sense,before_starts,before_ends,system=self.system)
+            before = ExonChain(self.chrom, self.sense, before_starts, before_ends, system=self.system)
         else:
             before = self.EmptyChain()
             
         if after_starts:
-            after = ExonChain(self.chrom,self.sense,after_starts,after_ends,system=self.system)
+            after = ExonChain(self.chrom, self.sense, after_starts, after_ends, system=self.system)
         else:
             after = self.EmptyChain()
 
@@ -408,7 +408,7 @@ class Transcript(ExonChain):
             self.coding = False
             self.tx_class = description.get("tx_class","ncRNA")
         else:
-            self.UTR5,self.CDS,self.UTR3 = self.intersect(["UTR5","CDS","UTR3"],cds_start,cds_end)
+            self.UTR5,self.CDS,self.UTR3 = self.intersect(["UTR5","CDS","UTR3"], cds_start, cds_end)
             self.coding = True
             self.tx_class = description.get("tx_class","coding")
             if self.UTR5: 

@@ -32,26 +32,26 @@ def categorize(cats):
 def cat_from_name(name):
     parts = name.split('/')
     end = parts[-1]
-    if end in terminals:
-        return end
-    else:
+    if end not in terminals:
         if end.startswith('exon'):
-            return 'exon'
+            return parts[0], 'exon'
+        
         elif end.startswith('intron'):
-            return 'intron'
-    return end
+            return parts[0], 'intron'
+
+    return parts[0], end
 
 def summarize(q):
     # print q
     cat_count = defaultdict(int)
     tx_set = set()
     tx_exon_set = set()
-    for name, tx in zip(q.match_identifiers, q.match_objects):
-        tx_set.add(tx)
-        cat = cat_from_name(name)
+    for name in q.match_identifiers:
+        tx_id, cat = cat_from_name(name)
+        tx_set.add(tx_id)
         cat_count[cat] += 1
         if cat == 'exon':
-            tx_exon_set.add(tx)
+            tx_exon_set.add(tx_id)
     
     return cat_count, tx_set, tx_exon_set
 
@@ -94,7 +94,7 @@ class Query(object):
  
 
 class AnnotationTrack(object):
-    def __init__(self, realm, url="tcp://localhost:13370"):
+    def __init__(self, realm, url="tcp://*:13370"):
         self.realm = realm
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REQ)
@@ -241,7 +241,7 @@ class AnnotationServer(object):
                 q.match_objects = self.tx_by_gene[name]
 
             elif kind == "transcript_id" and name in self.tx_by_id:
-                q.match_objects = [self.tx_by_id[name], ]
+                q.match_objects = self.tx_by_id[name]
 
             else:
                 q.status = (1, "unknown {} '{}'".format(kind, name))
