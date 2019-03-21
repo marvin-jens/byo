@@ -5,34 +5,6 @@ import logging
 from byo.track import Accessor, Track
 from byo import complement, rev_comp
 
-import urllib2
-
-class RemoteCache(object):
-    def __init__(self, urlbase):
-        self.urlbase = urlbase
-        self.logger = logging.getLogger("byo.bio.genome_accessor.RemoteCache('{0}')".format(urlbase))
-
-    def __getitem__(self, genome):
-        self.logger.debug('getitem {0}'.format(genome))
-            
-        class Proxy(object):
-            no_data = False
-            def get_oriented(this, chrom, start, end, strand):
-                url = "{base}/{genome}/{chrom}:{start}-{end}{strand}".format(
-                    base = self.urlbase, 
-                    genome=genome, 
-                    chrom=chrom, 
-                    start=start, 
-                    end=end, 
-                    strand=strand
-                )
-                self.logger.debug('requesting "{0}"'.format(url))
-                res = urllib2.urlopen(url)
-                return res.read()
-
-        return Proxy()
-
-
 class Singleton(type):
     """
     To be used as a metaclass. Ensures a class is only instantiated once 
@@ -47,6 +19,57 @@ class Singleton(type):
         return cls._instances[key]
 
 
+class RemoteCache(object):
+    # # ensure that only one RemoteCache object is created per url
+    __metaclass__ = Singleton
+
+    def __init__(self, urlbase):
+        self.urlbase = urlbase
+        self.logger = logging.getLogger("byo.bio.genome_accessor.RemoteCache('{0}')".format(urlbase))
+        if urlbase.startswith("tcp:"):
+            self.zmq = True
+        else:
+            self.zmq = False
+        
+        if self.zmq:
+            import zmq
+            self.context = zmq.Context()
+            self.socket = self.context.socket(zmq.REQ)
+            self.socket.connect(self.urlbase)
+
+    def __getitem__(self, genome):
+        # self.logger.debug('getitem {0}'.format(genome))
+            
+        class Proxy(object):
+            no_data = False
+
+            def __init__(this):
+                if self.zmq:
+                    this.get_oriented = this.get_oriented_zmq
+                else:
+                    this.get_oriented = this.get_oriented_urllib2
+
+            def get_oriented_urllib2(this, chrom, start, end, strand):
+                import urllib2
+                url = "{base}/{genome}/{chrom}:{start}-{end}{strand}".format(
+                    base = self.urlbase, 
+                    genome=genome, 
+                    chrom=chrom, 
+                    start=start, 
+                    end=end, 
+                    strand=strand
+                )
+                self.logger.debug('requesting "{0}"'.format(url))
+                res = urllib2.urlopen(url)
+                return res.read()
+
+            def get_oriented_zmq(this, chrom, start, end, sense):
+                query = ("get_oriented", (genome, chrom, start, end, sense))
+                self.socket.send_pyobj(query)
+                res = self.socket.recv_pyobj()
+                return res
+
+        return Proxy()
 
 
 class GenomeCache(object):
@@ -440,10 +463,28 @@ class MSFAccessor(Accessor):
         return ["N"*int(end-start) for spc in species]
 
         
-if __name__ == "__main__":
-    #i = IndexedFasta('/data/BIO2/pcp/systems/hg19/genome/hg19.fna')
-    i = IndexedFasta('/data/BIO2/pcp/systems/ce6/genome/ce6.fna')
-    #print i.chrom_stats
-    print i.get_data('chrIV',0,100,'+')
-    #print i.chrom_stats
+def run_genome_server(path, bind_addr="tcp://*:13371"):
+    import zmq
+    genome_cache = GenomeCache(path)
+    context = zmq.Context()
+    socket = context.socket(zmq.REP)
+    socket.bind(bind_addr)
+
+    while True:
+        cmd, args = socket.recv_pyobj()
+        if cmd == "get_oriented":
+            genome, chrom, start, end, sense = args
+            res = genome_cache[genome].get_oriented(chrom, start, end, sense)
+
+        elif cmd == "get_available_genomes":
+            res = genome_cache.available_genomes()
         
+        else:
+            res = None
+
+        socket.send_pyobj(res)
+
+if __name__ == "__main__":
+    import sys
+    run_genome_server(sys.argv[1])
+    
