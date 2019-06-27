@@ -32,7 +32,7 @@ class BAM_ClusterGenerator(object):
     """
     def __init__(
             self,
-            bams=[], groups=[],
+            bams=[], groups=[], names=None,
             stranded=True,
             region="",
             cluster_type=ReadCluster,
@@ -50,7 +50,12 @@ class BAM_ClusterGenerator(object):
         if not stranded:
             self._plus = "*"
 
-        self.bams = [pysam.Samfile(name, "rb") for name in bams]
+        self.bams = []
+        for b in bams:
+            if type(b) == pysam.libcsamfile.Samfile:
+                self.bams.append(b)
+            else:
+                self.bams.append(pysam.Samfile(b, "rb"))
 
         if groups:
             if len(groups) != len(bams):
@@ -59,8 +64,11 @@ class BAM_ClusterGenerator(object):
                 raise ValueError(reason)
             
             self.names = groups
-        else:
+
+        if names == None:
             self.names = [os.path.basename(bam) for bam in bams]
+        else:
+            self.names = list(names) # our own copy to avoid side effects
             
         self.N_clusters = 0
         self.cluster_type = cluster_type
@@ -90,7 +98,7 @@ class BAM_ClusterGenerator(object):
         while curr:
             i = head()
             read = curr[i]
-            read.tags = read.tags + [('LB',names[i])]
+            read.tags = read.tags + [('LB', names[i])]
 
             yield read
             
