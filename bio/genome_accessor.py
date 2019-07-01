@@ -164,6 +164,9 @@ class TwoBitAccessor(Accessor):
 
     def get_data(self,chrom,start,end,sense):
         if self.chrom_lookup:
+            if not chrom in self.chrom_lookup:
+                raise ValueError('unknown chromosome "{}"'.format(chrom))
+
             chrom = self.chrom_lookup[chrom]
 
         seq = self.data[chrom][start:end]
@@ -471,16 +474,23 @@ def run_genome_server(path, bind_addr="tcp://*:13371"):
     socket.bind(bind_addr)
 
     while True:
-        cmd, args = socket.recv_pyobj()
-        if cmd == "get_oriented":
-            genome, chrom, start, end, sense = args
-            res = genome_cache[genome].get_oriented(chrom, start, end, sense)
-
-        elif cmd == "get_available_genomes":
-            res = genome_cache.available_genomes()
-        
+        try:
+            cmd, args = socket.recv_pyobj()
+        except (ValueError, TypeError) as exc:
+            res = "Malformed request: {}".format(exc)
         else:
-            res = None
+            if cmd == "get_oriented":
+                try:
+                    genome, chrom, start, end, sense = args
+                    res = genome_cache[genome].get_oriented(chrom, start, end, sense)
+                except (ValueError, TypeError) as exc:
+                    res = "Malformed request: {}".format(exc)
+
+            elif cmd == "get_available_genomes":
+                res = genome_cache.available_genomes()
+            
+            else:
+                res = "unknown command {}".format(cmd)
 
         socket.send_pyobj(res)
 

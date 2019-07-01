@@ -13,16 +13,20 @@ terminals = set(['PAS', "5'SS", "3'SS", "CDS", "5UTR", "3UTR"])
 
 def categorize(cats):
     res = ''
+    if not cats:
+        return res
+
     n = float(np.array(cats.values()).max())
     exon_frac = cats['exon'] / n
     intron_frac = cats['intron'] / n
     if exon_frac > .1:
         res = 'exon'
     else:
+        # print cats
         return 'intron'
         # res = 'intron'
     
-    segs = ["5UTR", "CDS", "3UTR"]
+    segs = ["other", "UTR5", "CDS", "UTR3"]
     fracs = np.array([cats[s]/ n for s in segs])
 
     seg = segs[fracs.argmax()]
@@ -78,6 +82,19 @@ class Query(object):
         
         return s
     
+    def describe_overlap(self):
+        cats, tx_set, tx_exon_set = summarize(self)
+        res = {
+            'categories' :cats,
+            'tx_set' :tx_set,
+            'exonic_tx_set' :tx_exon_set,
+            'brief' :categorize(cats)
+        }
+        return res
+
+    def __len__(self):
+        return len(getattr(self, "match_identifiers", []))
+
     def __add__(self, q):
         if self.realm != q.realm:
             raise ValueError("realm mismatch!")
@@ -176,7 +193,7 @@ class AnnotationServer(object):
     def add_transcript(self, tx, feature_extractor = lambda tx : list(tx.features) + list(tx.segments)):
         self.transcripts[tx.transcript_id] = tx
         self.tx_by_id[tx.name.split('.')[0]].append(tx)
-        self.tx_by_gene[tx.gene_id].append(tx)
+        self.tx_by_gene[tx.gene_id.split('.')[0]].append(tx)
         self.tx_by_gene[tx.gene_name].append(tx)
         self.n_tx += 1
         strand = tx.chrom + tx.sense
@@ -227,7 +244,13 @@ class AnnotationServer(object):
                 )
             else:
                 # this reports the overlapping feature start and end coordinates as well
-                q.match_starts, q.match_ends, fids = np.array(list(nc.find_overlap(start, end))).T
+                found = list(nc.find_overlap(start, end))
+                if found:
+                    q.match_starts, q.match_ends, fids = np.array(found).T
+                else:
+                    q.match_starts = []
+                    q.match_ends = []
+                    fids = []
             if q.unique:
                 fids = sorted(set(fids))
 
@@ -266,6 +289,8 @@ class AnnotationServer(object):
 
 
 if __name__ == "__main__":
+
+    # print categorize({'intron': 2, 'UTR3': 2})
     logging.basicConfig(level=logging.DEBUG)
     ann = AnnotationServer(realm=sys.argv[1])
     ann.load_transcripts(sys.argv[2])
