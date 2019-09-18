@@ -1,5 +1,6 @@
+# coding=future_fstrings
+from __future__ import print_function
 import sys
-import time
 import re
 import logging
 import ncls
@@ -8,6 +9,7 @@ import byo
 import byo.gene_model
 import numpy as np
 from collections import defaultdict
+from time import time
 
 terminals = set(['PAS', "5'SS", "3'SS", "CDS", "5UTR", "3UTR"])
 
@@ -72,12 +74,15 @@ class Query(object):
 
         self.get_objects = get_objects
         self.identifier = identifier
+        self.match_identifiers = []
+        self.match_objects = []
+        self.status = ''
 
     def __str__(self):
         s = "Query({self.realm}, coord={self.coord}, identifier={self.identifier}, collapsed={self.collapsed}, unique={self.unique})".format(self=self)
-        if hasattr(self, "status"):
+        if self.status:
             s += " status={self.status}".format(self=self)
-        if hasattr(self, "match_identifiers"):
+        if self.match_identifiers:
             s += "-> matches={}".format(",".join(self.match_identifiers))
         
         return s
@@ -136,6 +141,17 @@ class AnnotationTrack(object):
         res = self.socket.recv_pyobj()
         return res
 
+    def get_all_transcripts(self, **kwargs):
+        query = Query(self.realm, identifier=("get_transcript_ids", ''), **kwargs)
+        self.socket.send_pyobj(query)
+        res = self.socket.recv_pyobj()
+        return res
+
+    def get_all_genes(self, **kwargs):
+        query = Query(self.realm, identifier=("get_gene_ids", ''), **kwargs)
+        self.socket.send_pyobj(query)
+        res = self.socket.recv_pyobj()
+        return res
 
 class ExpressionTrack(object):
     def __init__(self, fexpr, ann_track, pattern="exon"):
@@ -176,7 +192,7 @@ class AnnotationServer(object):
 
     def build_ncls(self):
         for strand in sorted(self.ids.keys()):
-            t0 = time.time()
+            t0 = time()
             starts = np.array(self.starts[strand])
             ends = np.array(self.ends[strand])
             ids = np.array(self.ids[strand])
@@ -187,17 +203,24 @@ class AnnotationServer(object):
                 ids,
             )
             self.features[strand] = np.array(self.features[strand])
-            dt = time.time() - t0
+            dt = time() - t0
             self.logger.debug("built NCList from {0} items in {1:.3f}seconds".format(len(starts), dt))
 
     def add_transcript(self, tx, feature_extractor = lambda tx : list(tx.features) + list(tx.segments)):
         self.transcripts[tx.transcript_id] = tx
-        self.tx_by_id[tx.name.split('.')[0]].append(tx)
-        self.tx_by_gene[tx.gene_id.split('.')[0]].append(tx)
-        self.tx_by_gene[tx.gene_name].append(tx)
+        tx_name = tx.name.split('.')[0]
+        tx_gene_id = tx.gene_id.split('.')[0]
+        tx_gene_name = tx.gene_name
+        self.tx_by_id[tx_name].append(tx)
+        self.tx_by_gene[tx_gene_id].append(tx)
+        self.tx_by_gene[tx_gene_name].append(tx)
         self.n_tx += 1
         strand = tx.chrom + tx.sense
         to_add = feature_extractor(tx)
+
+        if tx.gene_id.startswith('ENSG00000000971'):
+            self.logger.info(f"we found ENSG00000000971 it! But are we keeping it? {tx_name}, {tx_gene_id}, {tx_gene_name} {to_add}")
+
         # print "feat extr", feature_extractor
         for f in to_add:
             # print f
@@ -208,14 +231,14 @@ class AnnotationServer(object):
             self.n_feat += 1
 
     def load_transcripts(self, fname, system='hg19', **kwargs):
-        t0 = time.time()
+        t0 = time()
         for tx in byo.gene_model.transcripts_from_GTF(fname, system=system):
             self.add_transcript(tx, **kwargs)
             if not self.n_tx % 1000:
-                dt = time.time() - t0
+                dt = time() - t0
                 self.logger.debug("{0} transcripts loaded, {1:.1f} tx/sec".format(self.n_tx, self.n_tx / dt))
 
-        dt = time.time() - t0
+        dt = time() - t0
         self.logger.debug("loaded {0} transcripts with {1} features in {2:.3f}seconds".format(self.n_tx, self.n_feat, dt))
 
     def query(self, chrom, start, end, sense):
@@ -224,6 +247,7 @@ class AnnotationServer(object):
         return features
 
     def Q(self, q):
+        t0 = time()
         if self.realm != q.realm:
             q.status = (1, "realm mismatch {} != {}".format(self.realm, q.realm))
             return q
@@ -260,19 +284,29 @@ class AnnotationServer(object):
         
         elif q.identifier:
             kind, name = q.identifier
+            self.logger.debug(f"received query: {q.identifier}")
             if kind == "gene_id" and name in self.tx_by_gene:
                 q.match_objects = self.tx_by_gene[name]
 
             elif kind == "transcript_id" and name in self.tx_by_id:
                 q.match_objects = self.tx_by_id[name]
 
+            elif kind == "get_transcript_ids":
+                q.match_identifiers = sorted(self.tx_by_id.keys())
+
+            elif kind == "get_gene_ids":
+                q.match_identifiers = sorted(self.tx_by_gene.keys())
+
             else:
                 q.status = (1, "unknown {} '{}'".format(kind, name))
                 return q
 
-            q.match_identifiers = [tx.name for tx in q.match_objects]
+            if not q.match_identifiers:
+                q.match_identifiers = [tx.name for tx in q.match_objects]
 
         q.status = (0, "OK")
+        dt = time() - t0
+        self.logger.debug(f"processed query in {dt:.3f} ms")
         return q
 
     def serve_forever(self, bind_addr="tcp://*:13370"):
@@ -287,15 +321,66 @@ class AnnotationServer(object):
             # print "sending result", res
             socket.send_pyobj(res)
 
+def run_server(args):
+    ann = AnnotationServer(realm=args.realm)
+    # print(args.annotations)
+    for fname in args.annotations:
+        ann.load_transcripts(fname, system=args.realm.split('/')[0])
+
+    ann.build_ncls()
+    ann.serve_forever(bind_addr="tcp://*:13370")
+
+def print_results(q):
+    from itertools import izip_longest
+    if not q:
+        print(f"no results found for {q.identifier} -> {q.status}")
+    else:
+        for oid, obj in izip_longest(q.match_identifiers, q.match_objects, fillvalue=None):
+            print(f"{oid}\t{obj}")
+
 
 if __name__ == "__main__":
-
-    # print categorize({'intron': 2, 'UTR3': 2})
     logging.basicConfig(level=logging.DEBUG)
-    ann = AnnotationServer(realm=sys.argv[1])
-    ann.load_transcripts(sys.argv[2])
-    ann.build_ncls()
+    import argparse
+    parser = argparse.ArgumentParser(description='genome & transcript annotation swiss army knife')
+    parser.add_argument('annotations', metavar='ann', type=str, nargs='*', help='files (GTF) to add to the annotation')
+    parser.add_argument('--realm', type=str, default='hg38/gencode', help='if running or connecting to server, this must match')
+    parser.add_argument('--addr', dest='bind_addr', default="tcp://localhost:13370", help="bind_address to run/connect server via ZMQ")
+    parser.add_argument('--serve', dest='serve', default=False, action="store_true", help="run annotation server")
+    parser.add_argument('--query', dest='query', help="query a genomic region --query <chrom>:<start>-<end><strand> (start,end are zero-based, end-exclusive)")
+    parser.add_argument('--gene', dest='gene', help="query a gene-name or ID for known transcript models")
+    parser.add_argument('--tid', dest='tid', help="query a transcript ID for a known transcript model")
+    parser.add_argument('--all-transcripts', dest='all_tid', default=False, action="store_true", help="retrieve a list of all known transcript IDs")
+    parser.add_argument('--all-genes', dest='all_genes', default=False, action="store_true", help="retrieve a list of all known gene names/IDs")
+    parser.add_argument('--bed', dest='bed', help="annotate BED file [NOT IMPLEMENTED]")
+    parser.add_argument('--gff', dest='gff', help="annotate GFF file [NOT IMPLEMENTED]")
+    parser.add_argument('--out', dest='out', help="which data to add? [tid,gene_id,gene_name,category]. Comma-separated. [NOT IMPLEMENTED]", default="category,gene_name,tid")
+    parser.add_argument('--hierarchy', dest='hierarchy', help="annotation hierarchy. Comma-separated. [NOT IMPLEMENTED]", default="CDS,UTR5,UTR3,SS5,SS3,PAS,TSS,exon,intron,non-coding,intergenic")
+    args = parser.parse_args()
 
+    if args.serve:
+        run_server(args)
+    else:
+        ann = AnnotationTrack(args.realm, url=args.bind_addr)
+        if args.query:
+            chrom, start, end, strand = args.query.split(':')
+            print_results(ann.get_oriented(chrom, int(start), int(end), strand))
+
+        if args.gene:
+            print_results(ann.get_transcripts_by_gene(args.gene))
+
+        if args.tid:
+            print_results(ann.get_transcripts_by_id(args.tid))
+
+        if args.all_tid:
+            print_results(ann.get_all_transcripts())
+
+        if args.all_genes:
+            print_results(ann.get_all_genes())
+
+        # annotate BED file
+        
+    # print categorize({'intron': 2, 'UTR3': 2})
     # q = ann.Q(Query("hg19/gencode28", identifier=("gene_id", "SAMD11")))
     # exon = list(q.match_objects[0].exons)[1]
     # print exon
@@ -307,6 +392,3 @@ if __name__ == "__main__":
     # print q
     # for start, end, name in zip(q.match_starts, q.match_ends, q.match_identifiers):
     #     print start, end, name
-
-    ann.serve_forever(bind_addr="tcp://*:13370")
-
