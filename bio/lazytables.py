@@ -105,12 +105,13 @@ class NamedTupleImporter(object):
         #print "#src: ",src
 
     def load_descr(self,l):
+        # print "load descr"
         try:
             # try parsing the new table description line
             n_cols = []
             n_casts = []
             for colstr in l.replace("#","").split("\t"):
-                #print "#",colstr
+                # print "#",colstr
                 key,typestr = colstr.strip().split(":")
                 n_cols.append(key)
                 n_casts.append(self.casttypes[typestr])
@@ -122,9 +123,11 @@ class NamedTupleImporter(object):
                 n_casts.pop(i)
                     
         except ValueError:
+            # print "meep", n_cols, n_casts
             self.logger.warning("ignoring malformed table description line '%s' in '%s'" % (l,self.src_name))
         else:
             # everything went well. Accept the new definition
+            # print "meepyeah", n_cols, n_casts
             self.header_line = l
             self.cols = n_cols
             self.casts = n_casts
@@ -181,7 +184,8 @@ class NamedTupleImporter(object):
                     continue
 
                 vals = l.split(sep)
-                #print vals,len(vals)
+                # print vals,len(vals)
+                # print casts
                 for i in self.skip:
                     vals.pop(i)
                 #print vals,self.skip

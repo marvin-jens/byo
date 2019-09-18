@@ -42,6 +42,7 @@ class ModelSystem(object):
         self.root = root
         if genome == None:
             if getattr(byo.config, "genome_server", None):
+                # print "getting remote genome from", byo.config.genome_server, "for", name
                 self.genome = RemoteCache(byo.config.genome_server)[name]
             else:
                 self.genome = GenomeCache(os.path.join(root, "genomes"))[name]

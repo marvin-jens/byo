@@ -64,6 +64,7 @@ class RemoteCache(object):
                 return res.read()
 
             def get_oriented_zmq(this, chrom, start, end, sense):
+                # print("RemoteCache.Proxy.get_oriented_zmq", genome, chrom, start, end, sense)
                 query = ("get_oriented", (genome, chrom, start, end, sense))
                 self.socket.send_pyobj(query)
                 res = self.socket.recv_pyobj()
