@@ -30,6 +30,7 @@ class ExonChain(object):
         self.system = system
         self.chrom = chrom
         self.sense = sense
+        self.strand = sense
         self.exon_starts = np.array(sorted(exon_starts))
         self.exon_ends = np.array(sorted(exon_ends))
         self.name = name
@@ -72,17 +73,23 @@ class ExonChain(object):
         if self.exon_count > 1:
             return ExonChain(self.chrom,self.sense,self.exon_ends[:-1],self.exon_starts[1:],system=self.system)
 
-    def map_to_spliced(self,pos):
+    def map_to_spliced(self, pos, truncate=False):
         if self.sense == "+":
             n = min(bisect_right(self.exon_starts, pos), self.exon_count) - 1
             if not (self.exon_starts[n] <= pos <= self.exon_ends[n]):
-                raise ValueError("%d does not lie within any exon bounds" % pos)
+                if not truncate:
+                    raise ValueError("%d does not lie within any exon bounds" % pos)
+                else:
+                    pos = self.exon_ends[n]
 
             return self.ofs + self.dir * (pos - self.exon_starts[n] + self.exon_txstarts[n])
         else:
-            n = min(max(0,bisect_left(self.exon_ends,pos)), self.exon_count - 1)
+            n = min(max(0,bisect_left(self.exon_ends, pos)), self.exon_count - 1)
             if not (self.exon_starts[n] <= pos <= self.exon_ends[n]):
-                raise ValueError("%d does not lie within any exon bounds" % pos)
+                if not truncate:
+                    raise ValueError("%d does not lie within any exon bounds" % pos)
+                else:
+                    pos = self.exon_starts[n]
 
             return self.ofs + self.dir * (pos - self.exon_starts[n] + self.exon_txstarts[n]) - 1
 
@@ -96,8 +103,8 @@ class ExonChain(object):
             return y,x
         #return min(x,y),max(x,y)
 
-    def map_block_to_spliced(self,start,end):
-        x,y = self.map_to_spliced(start),self.map_to_spliced(end)
+    def map_block_to_spliced(self,start,end, truncate=False):
+        x,y = self.map_to_spliced(start, truncate), self.map_to_spliced(end, truncate)
         if y > x:
             # semantics change here because start is included, end is excluded
             # in C indexing.
