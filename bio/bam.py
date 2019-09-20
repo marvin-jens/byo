@@ -11,7 +11,7 @@ class BAMTrack(object):
         self.bam = pysam.AlignmentFile(self.fname)
         self.mode = mode
         self.logger = logging.getLogger(f'byo.BAMTrack({fname})')
-        if not os.path.exists(self.fname.rstrip() + '.bai'):
+        if not self.bam.check_index():
             self.logger.info("indexing BAM file...")
             pysam.samtools.index(fname)
 
@@ -24,7 +24,7 @@ class BAMTrack(object):
         }
 
         self.get, self.get_oriented = get_functions[mode]
-        self.logger.debug("initialized track in '{mode}' mode")
+        self.logger.debug(f"initialized track in '{mode}' mode")
 
     def _get(self, chrom, start, end, strand, mate=None):
         def strand_filter(read):
