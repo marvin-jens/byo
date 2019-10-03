@@ -396,7 +396,7 @@ class ExonChain(object):
 class Transcript(ExonChain):
     def __init__(self, name, chrom, sense, exon_starts, exon_ends, cds, score=0, system=None, description={}, **kwargs):
         # Initialize underlying ExonChain
-        super(Transcript,self).__init__(chrom,sense,exon_starts,exon_ends,system=system)
+        super(Transcript, self).__init__(chrom,sense,exon_starts,exon_ends,system=system)
         self.score = score
         self.category = "transcript/body"
         self.transcript_id = kwargs.get('transcript_id', name)
@@ -419,17 +419,17 @@ class Transcript(ExonChain):
             self.coding = True
             self.tx_class = description.get("tx_class","coding")
             if self.UTR5: 
-                self.UTR5.name = "%s.UTR5" % self.name
+                self.UTR5.name = "%s/UTR5" % self.name
                 self.UTR5.gene_id = self.gene_id
                 self.UTR5.category = "transcript/UTR5"
 
             if self.CDS: 
-                self.CDS.name = "%s.CDS" % self.name
+                self.CDS.name = "%s/CDS" % self.name
                 self.CDS.gene_id = self.gene_id
                 self.UTR5.category = "transcript/CDS"
 
             if self.UTR3: 
-                self.UTR3.name = "%s.UTR3" % self.name
+                self.UTR3.name = "%s/UTR3" % self.name
                 self.UTR3.gene_id = self.gene_id
                 self.UTR5.category = "transcript/UTR3"
 
@@ -439,7 +439,27 @@ class Transcript(ExonChain):
             else:
                 self.CDS.start_codon = cds_end
                 self.CDS.stop_codon = cds_start
-            
+
+    @classmethod
+    def from_bed12(cls, line, system=None):
+        chrom, start, end, name, score, strand, cds_start, cds_end, color, exon_count, block_sizes, block_starts = line.rstrip().split('\t')
+        
+        start = int(start)
+        end = int(end)
+        
+        exon_starts = np.array(block_starts.split(','), dtype=int) + start
+        exon_ends = np.array(block_sizes.split(','), dtype=int) + exon_starts
+        
+        chain = cls(
+            name, chrom, strand, exon_starts, exon_ends, 
+            (int(cds_start), int(cds_end)),
+            score=np.nan if score == '.' else float(score),
+            system=system,
+            description=dict(color=color, dtype=np.uint8)
+        )
+
+        return chain
+    
     @property
     def segments(self):
         if self.UTR5:
@@ -870,9 +890,15 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t", ORF_th
 
         yield Transcript(tx_id,chrom,sense,exon_starts,exon_ends,cds,description=shared_attributes, system=system, **shared_attributes)
 
-def chains_from_bed6(src, system=None):
+def _maybe_file(src):
+    if hasattr(src, 'read'):
+        return src
+    else:
+        return file(src)
+
+def from_bed6(src, system=None):
     import numpy as np
-    for line in src:
+    for line in _maybe_file(src):
         chrom, start, end, name, score, strand = line.rstrip().split('\t')
         chain = ExonChain(chrom, strand, [int(start), ], [int(end), ], system=system)
         if score == '.':
@@ -880,6 +906,39 @@ def chains_from_bed6(src, system=None):
         else:
             chain.score = float(score)
         yield chain
+
+def from_bed12(src, system=None, filter=None):
+    import numpy as np
+    for line in _maybe_file(src):
+        if not (filter is None) and not (filter in line):
+            continue
+
+        chain = Transcript.from_bed12(line, system=system)
+        yield chain
+
+chains_from_bed6 = from_bed6 # deprecated name
+
+def transcripts_from_UCSC(fname,system=None,tx_class = None,gene_names = {},fix_chr=True,table_format=ucsc_table_format,tx_type=Transcript,**kwargs):
+    from byo.bio.lazytables import LazyImporter,NamedTupleImporter
+
+    kw = {}
+    if tx_class:
+        kw = {'tx_class' : tx_class}
+
+    def factory(name="",chrom="",sense="",exonStarts=[],exonEnds=[],cdsStart=-1,cdsEnd=-1,**kwargs):
+        k = dict(kw)
+        k.update(kwargs)
+
+        if not chrom.startswith('chr') and fix_chr:
+            chrom = 'chr'+chrom
+        
+        # splice in gene ids if given in a separate file (ce6)
+        k['name2'] = gene_names.get(name,k.get('name2',k.get('proteinID',name)))
+        return tx_type(name,chrom,sense,exonStarts,exonEnds,(cdsStart,cdsEnd),description=k,system=system)
+
+    ucsc_type_hints = dict(txStart="int",txEnd="int",cdsStart="int",cdsEnd="int",exonCount="int",exonStarts="intlist",exonEnds="intlist",exonFrames="intlist")
+    return LazyImporter(fname,factory,"name",type_hints=ucsc_type_hints,renames=dict(strand="sense"),parse_comments=True,descr=table_format,**kwargs)
+
 
 #def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t",ORF_thresh=20):
 
