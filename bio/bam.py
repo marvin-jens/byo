@@ -6,14 +6,22 @@ import numpy as np
 import logging
 
 class BAMTrack(object):
-    def __init__(self, fname, mode='list'):
+    def __init__(self, fname, mode='list', only_once=False):
         self.fname = fname
         self.bam = pysam.AlignmentFile(self.fname)
         self.mode = mode
         self.logger = logging.getLogger(f'byo.BAMTrack({fname})')
-        if not self.bam.check_index():
-            self.logger.info("indexing BAM file...")
+        try:
+            has_index = self.bam.check_index()
+        except ValueError:
+            self.logger.debug("check_index() raised exception")
+            has_index = False
+    
+        if not has_index:
+            self.logger.info(f"indexing BAM file... {fname}")
             pysam.samtools.index(fname)
+            # re-open BAM file, otherwise it still thinks index is missing :/
+            self.bam = pysam.AlignmentFile(self.fname)
 
         get_functions = {
             'list' : (self._get_list, self._get_list_oriented),
@@ -25,6 +33,12 @@ class BAMTrack(object):
 
         self.get, self.get_oriented = get_functions[mode]
         self.logger.debug(f"initialized track in '{mode}' mode")
+        self.seen = set()
+        self.only_once = only_once
+
+    @property
+    def total_mapped_reads(self):
+        return self.bam.mapped
 
     def _get(self, chrom, start, end, strand, mate=None):
         def strand_filter(read):
@@ -56,14 +70,24 @@ class BAMTrack(object):
             else:
                 return False
 
+        def once_filter(read):
+            if read.query_name in self.seen:
+                return False
+
+            self.seen.add(read.query_name)
+            return True
+
         reads = []
         for read in self.bam.fetch(chrom, start, end):
             if not strand_filter(read):
                 continue
 
+            if self.only_once and not once_filter(read):
+                continue
+
             if not mate_filter(read):
                 continue
-            
+
             reads.append(read)
         
         return reads
