@@ -82,7 +82,7 @@ class Query(object):
         s = "Query({self.realm}, coord={self.coord}, identifier={self.identifier}, collapsed={self.collapsed}, unique={self.unique})".format(self=self)
         if self.status:
             s += " status={self.status}".format(self=self)
-        if self.match_identifiers:
+        if len(self.match_identifiers):
             s += "-> matches={}".format(",".join(self.match_identifiers))
         
         return s
@@ -122,6 +122,29 @@ class AnnotationTrack(object):
         self.socket = self.context.socket(zmq.REQ)
         self.url = url
         self.socket.connect(self.url)
+
+    def annotate_chain(self, chain, hierarchy=[['CDS', 'UTR5', 'UTR3',], ['exon', 'intron']]):
+        import re
+        parts = set()
+        for exon in chain.exons:
+            q = self.get_oriented(exon.chrom, exon.start, exon.end, exon.sense, collapse=True)
+            # print(q)
+            for fid in q.match_identifiers:
+                x = fid.split('/')[1].split('.')[0]
+                parts.add(x)
+        
+        classification = []
+        for H in hierarchy:
+            m = ''
+            for h in H:
+                if h in parts:
+                    m = h
+                    break
+            classification.append(m)
+        
+        # print(classification)
+        return classification
+
 
     def get_oriented(self, chrom, start, end, sense, **kwargs):
         query = Query(self.realm, coord = (chrom, int(start), int(end), sense), **kwargs)
@@ -218,8 +241,8 @@ class AnnotationServer(object):
         strand = tx.chrom + tx.sense
         to_add = feature_extractor(tx)
 
-        if tx.gene_id.startswith('ENSG00000000971'):
-            self.logger.info(f"we found ENSG00000000971 it! But are we keeping it? {tx_name}, {tx_gene_id}, {tx_gene_name} {to_add}")
+        # if tx.gene_id.startswith('ENSG00000000971'):
+        #     self.logger.info(f"we found ENSG00000000971 it! But are we keeping it? {tx_name}, {tx_gene_id}, {tx_gene_name} {to_add}")
 
         # print "feat extr", feature_extractor
         for f in to_add:
@@ -284,7 +307,7 @@ class AnnotationServer(object):
         
         elif q.identifier:
             kind, name = q.identifier
-            self.logger.debug(f"received query: {q.identifier}")
+            # self.logger.debug(f"received query: {q.identifier}")
             if kind == "gene_id" and name in self.tx_by_gene:
                 q.match_objects = self.tx_by_gene[name]
 
@@ -305,8 +328,8 @@ class AnnotationServer(object):
                 q.match_identifiers = [tx.name for tx in q.match_objects]
 
         q.status = (0, "OK")
-        dt = time() - t0
-        self.logger.debug(f"processed query in {dt:.3f} ms")
+        # dt = time() - t0
+        # self.logger.debug(f"processed query in {dt:.3f} ms")
         return q
 
     def serve_forever(self, bind_addr="tcp://*:13370"):
