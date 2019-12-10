@@ -70,8 +70,9 @@ class ModelSystemDB(object):
 systems = ModelSystemDB()
 
 
-if __name__=='__main__':
-    seq = 'attaCGtTTTTGCCGCTTAaaaaaaaaa'
-    print seq
-    print complement(seq)
-    print rev_comp(seq)
+# if __name__=='__main__':
+#     seq = 'attaCGtTTTTGCCGCTTAaaaaaaaaa'
+
+    # print seq
+    # print complement(seq)
+    # print rev_comp(seq)

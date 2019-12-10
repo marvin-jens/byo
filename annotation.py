@@ -11,6 +11,11 @@ import numpy as np
 from collections import defaultdict
 from time import time
 
+try:
+    from itertools import izip_longest as zip_longest
+except ImportError:
+    from itertools import zip_longest
+
 terminals = set(['PAS', "5'SS", "3'SS", "CDS", "5UTR", "3UTR"])
 
 def categorize(cats):
@@ -354,11 +359,10 @@ def run_server(args):
     ann.serve_forever(bind_addr="tcp://*:13370")
 
 def print_results(q):
-    from itertools import izip_longest
     if not q:
         print(f"no results found for {q.identifier} -> {q.status}")
     else:
-        for oid, obj in izip_longest(q.match_identifiers, q.match_objects, fillvalue=None):
+        for oid, obj in zip_longest(q.match_identifiers, q.match_objects, fillvalue=None):
             print(f"{oid}\t{obj}")
 
 

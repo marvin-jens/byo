@@ -1,5 +1,7 @@
+from __future__ import absolute_import
 import numpy as np
 from collections import defaultdict
+from .editedcluster import EditedCluster, requires_read_parsing
 
 ### Helper functions
 def entropy_of_pos(pos,counts):
@@ -12,7 +14,6 @@ def entropy_of_pos(pos,counts):
 
     return - (p * np.log2(p)).sum()
 
-from editedcluster import EditedCluster, requires_read_parsing
 
 def requires_map_parsing(f):
     """

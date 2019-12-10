@@ -4,6 +4,10 @@ from collections import namedtuple
 from pprint import pprint
 import itertools
 import logging
+try:    
+    from itertools import izip_longest as zip_longest
+except ImportError:
+    from itertools import zip_longest
 
 class LazyImporter(object):
     def __init__(self,src,dst,key_attr,**kwargs):
@@ -64,14 +68,15 @@ class NamedTupleImporter(object):
 
     def __init__(self,src,dst=None,cols = [],casts = [],skip = [],type_hints={},renames={},parse_comments=False,parse_headers=True,default_cast='str',comment_char="#",sep="\t",descr="",skip_broken=True,keep_line=False,debug=False,mangling=lambda x : x):
         self.src_name = src
-        if type(src) == file:
+        if hasattr(src, "read"):
+            # is a file or file-like
             self.src = src
         else:
             if src.endswith('.gz'):
                 import gzip
                 self.src = gzip.GzipFile(src,'r')
             else:
-                self.src = file(src)
+                self.src = open(src)
 
         self.mangling = mangling
         self.debug = debug
@@ -191,13 +196,13 @@ class NamedTupleImporter(object):
                 #print vals,self.skip
                 try:
                     if self.debug:
-                        pprint(list(itertools.izip_longest(cols,vals,casts,fillvalue="l")))
+                        pprint(list(zip_longest(cols, vals, casts, fillvalue="l")))
                     if self.keep_line:
                         #print vals
-                        data = [c(v) for c,v in itertools.izip_longest(casts,vals,fillvalue=str)][:len(casts)]
+                        data = [c(v) for c,v in zip_longest(casts, vals, fillvalue=str)][:len(casts)]
                         data[-1] = l
                     else:
-                        data = [c(v) for c,v in itertools.izip_longest(casts,vals,fillvalue="")]
+                        data = [c(v) for c,v in zip_longest(casts, vals, fillvalue="")]
                     yield self.tuple_type(*self.mangling(data))
 
                 except ValueError as E:

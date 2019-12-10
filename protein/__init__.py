@@ -1,4 +1,4 @@
-from codons import codon_table
+from byo.protein.codons import codon_table
 
 def translate(seq,frame=0):
     started = False

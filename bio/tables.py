@@ -273,7 +273,7 @@ class Importer(object):
                 for i,(k,v,c) in enumerate(zip(cols,s_vals,casts)):
                     try:
                         data[k] = c(v)
-                    except ValueError,V:
+                    except ValueError as V:
                         warning("# %d %s %s panic %s" % (i,k,v,V))
                         data[k] = invalid[c]
                         err = True

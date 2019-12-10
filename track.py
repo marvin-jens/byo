@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function
 import logging
 import os
-
+try:
+    from ConfigParser import SafeConfigParser as ConfigParser, NoSectionError
+except ImportError:
+    # python 3
+    from configparser import SafeConfigParser as ConfigParser, NoSectionError
 
 class Accessor(object):
     supports_write = False
@@ -142,12 +147,14 @@ class Track(object):
             return getattr(obj,"__name__",str(obj))
 
         kwarg_str = "\n".join(["%s=%s" % (k,to_str(self.kwargs[k])) for k in sorted(self.kwargs.keys()) if k != "mode"])
-        file(os.path.join(self.path,"track.rc"),"w+").write(trackrc % dict(accessor=self.accessor.__name__,kwargs=kwarg_str))
+
+        open(os.path.join(self.path, "track.rc"), "w+").write(trackrc % dict(accessor=self.accessor.__name__,kwargs=kwarg_str))
+
         self.flush_all()
 
-    def __del__(self):
-        if "w" in self.mode:
-            self.save()
+    # def __del__(self):
+    #     if "w" in self.mode:
+    #         self.save()
 
     def flush(self,chrom,sense):
         ID = self.get_identifier(chrom,sense)
@@ -204,7 +211,6 @@ def load_track(path,default_accessor="ArrayAccessor",**kwargs):
     It determines the correct ArrayAccessor to use by looking for the config file track.rc
     in the directory.
     """
-    from ConfigParser import SafeConfigParser as ConfigParser, NoSectionError
     import os
     import byo.bio.track_accessors as track_accessors
     if path.endswith('.fa') or path.endswith('.fna') or path.endswith('.fasta'):
@@ -238,7 +244,7 @@ def array_track(path,dtype=float32,**kwargs):
 if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.DEBUG)
-    print "lets do some track-testing"
+    print("lets do some track-testing")
     from byo.bio.track_accessors import ArrayAccessor,TSVAccessor
     import numpy
 
@@ -257,7 +263,7 @@ if __name__ == "__main__":
     
     t = load_track('test_track_tsv')
     
-    print t.get_oriented('chr1',200,300,"+")
+    print(t.get_oriented('chr1',200,300,"+"))
 
     
     

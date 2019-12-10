@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function
 import os,sys
 from collections import defaultdict,namedtuple
 from bisect import bisect_left,bisect_right
@@ -187,16 +188,16 @@ class ExonChain(object):
     def intersect(self, names, start, end, expand=False):
         # TODO: Clean this up
         #print "INTERSECT",names,start,end
-        start,end = min(start,end),max(start,end)
+        start, end = min(start, end), max(start, end)
         if not expand:
-            start = max(start,self.start)
-            end = min(end,self.end)
+            start = max(start, self.start)
+            end = min(end, self.end)
 
-        first = bisect_right(self.exon_starts,start) - 1
-        last = bisect_right(self.exon_starts,end) -1
+        first = bisect_right(self.exon_starts, start) - 1
+        last = bisect_right(self.exon_starts, end) -1
         
-        f2 = bisect_right(self.exon_ends,start)
-        l2 = bisect_right(self.exon_ends,end)
+        f2 = bisect_right(self.exon_ends, start)
+        l2 = bisect_right(self.exon_ends, end)
         
         #print first,f2
         #print last,l2
@@ -226,9 +227,10 @@ class ExonChain(object):
             after_ends = [0]
         
         if first == f2:
-            chain_starts[0] = max(start,chain_starts[0])
-            before_ends[-1] = min(start,before_ends[-1])
+            chain_starts[0] = max(start, chain_starts[0])
+            before_ends[-1] = min(start, before_ends[-1])
         else:
+            # print("start falls between exon bounds?")
             # truncate chain, breakpoint between two exons
             before_ends[-1] = before_starts[-1]
             if expand:
@@ -236,9 +238,10 @@ class ExonChain(object):
                 chain_starts[0] = start
             
         if last == l2:
-            chain_ends[-1] = min(end,chain_ends[-1])
-            after_starts[0] = max(end,after_starts[0])
+            chain_ends[-1] = min(end, chain_ends[-1])
+            after_starts[0] = max(end, after_starts[0])
         else:
+            # print("end falls between exon bounds?")
             # truncate chain, breakpoint between two exons
             after_starts[0] = after_ends[0]
             if expand:
@@ -248,11 +251,12 @@ class ExonChain(object):
         def remove_empty(starts,ends):
             keep_starts = []
             keep_ends = []
-            for s,e in zip(starts,ends):
+            for s,e in zip(starts, ends):
                 if s != e:
                     keep_starts.append(s)
                     keep_ends.append(e)
-            return keep_starts,keep_ends
+
+            return keep_starts, keep_ends
         
         before_starts, before_ends = remove_empty(before_starts, before_ends)
         chain_starts, chain_ends = remove_empty(chain_starts, chain_ends)
@@ -276,12 +280,12 @@ class ExonChain(object):
             after = self.EmptyChain()
 
         if self.sense == "+":
-            return before,chain,after
+            return before, chain, after
         else:
-            return after,chain,before
+            return after, chain, before
 
-    def cut(self,start,end, expand=False):
-        before,chain,after = self.intersect(['before','cut','after'],start,end,expand=expand)
+    def cut(self, start, end, expand=False):
+        before, chain, after = self.intersect(['before', 'cut', 'after'], start, end, expand=expand)
         return chain
     
     #def __eq__(self,other):
@@ -407,7 +411,7 @@ class Transcript(ExonChain):
         self.name = name
         self.description = description
 
-        cds_start,cds_end = cds
+        cds_start, cds_end = cds
         if cds_start == cds_end:
             self.UTR5 = None
             self.UTR3 = None
@@ -459,7 +463,8 @@ class Transcript(ExonChain):
         )
 
         return chain
-    
+
+
     @property
     def segments(self):
         if self.UTR5:
@@ -828,8 +833,8 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t", ORF_th
     current_tx = "NN"
 
     n = 0
-    cds_min = None
-    cds_max = None
+    cds_min = np.inf
+    cds_max = -np.inf
     ignore_records = set(['gene', 'start_codon', 'stop_codon', 'UTR', 'transcript'])
     for i,gff in enumerate(byo.bio.gff.gff_importer(fname,fix_chr=False)):
         #sys.stderr.write(".")
@@ -858,8 +863,8 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t", ORF_th
             exon_starts = []
             exon_ends = []
             shared_attributes = {}
-            cds_min = None
-            cds_max = None
+            cds_min = np.inf
+            cds_max = -np.inf
             n += 1
 
             current_tx = tx_id
@@ -867,11 +872,9 @@ def transcripts_from_GTF(fname="/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/t", ORF_th
             sense = gff.sense
 
         if gff.type == 'CDS':
-            if cds_min is None:
-                cds_min = gff.start -1
-
+            cds_min = min(gff.start -1, cds_min)
             cds_max = max(gff.end, cds_max)
-            # print "encountered CDS record. current CDS", cds_min, cds_max
+            # print("encountered CDS record. current CDS", cds_min, cds_max)
             continue
 
         if gff.type != "exon":

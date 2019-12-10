@@ -1,8 +1,10 @@
+from __future__ import absolute_import
 import logging
 import numpy as np
 import itertools
 import re
 from collections import defaultdict
+from .readcluster import ReadCluster
 
 count_functions = {
     'lin' : lambda x : x,
@@ -55,7 +57,7 @@ def requires_read_parsing(f):
         return f(self,*args,**kwargs)
     return wrapper
     
-from readcluster import ReadCluster
+
 class EditedCluster(ReadCluster):
     """
     Extends the ReadCluster base class. Parses all reads edit and CIGAR strings to

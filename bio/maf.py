@@ -87,7 +87,7 @@ def MAF_chunks(source,ref,species=[]):
             mpos = self.ref_to_maf(pos)
             windows = {}
 
-            for s,seq in self.seqs.items():
+            for s,seq in list(self.seqs.items()):
                 
                 # walk right and collect nucleotides
                 win = []
@@ -210,16 +210,16 @@ def MAF_chunks(source,ref,species=[]):
 if __name__ == "__main__":
     from gzip import GzipFile
     for i,maf in enumerate(MAF_chunks(GzipFile('/data/rajewsky/genomes/hg19_100way/maf/chr22.maf.gz'),'hg19')):
-        print maf
+        print(maf)
         maf._setup()
         center = maf.start+maf.size/2
         #cmaf = maf.ref_to_maf(center)
         #print maf.size,center,maf.size/2,cmaf
 
-        print "windows"
-        print maf.get_windows(center)
+        print("windows")
+        print(maf.get_windows(center))
         
-        print "columns"
-        print maf.columns
+        print("columns")
+        print(maf.columns)
         if i > 10:
             break

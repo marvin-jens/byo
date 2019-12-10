@@ -165,14 +165,14 @@ if __name__=="__main__":
     #print cell_conc(1)
 
     
-    print "1000 molecules are %.3f nM" % (cell_conc(1000)/1E-9)
-    print "1nM is %.1f molecules per cell" % (1e-9*Na*V*1000)
-    print "concentration of all binding sites in 3'UTRs in uM", cell_conc(1E8)*1e6
-    print "Kd of -15 kcal/mol in nM", kcal_to_Kd(-15)
-    print "Kd of -17 kcal/mol in nM", kcal_to_Kd(-17)
-    print "Kd of -17 kcal/mol in nM", exp(-17*kcal/kT)*1e9
-    print "binding energy corr. to 10nM Kd", log(20E-9)/kcal*kT
-    print "1 kcal/mol in kT @37 C", kcal,kT,kcal/kT*11
+    print(("1000 molecules are %.3f nM" % (cell_conc(1000)/1E-9)))
+    print(("1nM is %.1f molecules per cell" % (1e-9*Na*V*1000)))
+    print(("concentration of all binding sites in 3'UTRs in uM", cell_conc(1E8)*1e6))
+    print(("Kd of -15 kcal/mol in nM", kcal_to_Kd(-15)))
+    print(("Kd of -17 kcal/mol in nM", kcal_to_Kd(-17)))
+    print(("Kd of -17 kcal/mol in nM", exp(-17*kcal/kT)*1e9))
+    print(("binding energy corr. to 10nM Kd", log(20E-9)/kcal*kT))
+    print(("1 kcal/mol in kT @37 C", kcal,kT,kcal/kT*11))
     #print Kd_to_kcal(kcal_to_Kd(-15))
 
     # units in nM
@@ -185,9 +185,9 @@ if __name__=="__main__":
     #print Kd_to_kcal(zamore_mouse_11)
     #print Kd_to_kcal(0.004)
         
-    print "testing energy model"
+    print("testing energy model")
     for e,s in [(Kd_to_kcal(.013,temp=25),"&.))))))).....))))....."),(Kd_to_kcal(.026,temp=25),"&.))))))).............."),(Kd_to_kcal(.020,temp=25),"&))))))))))))))))))))))")]:
-        print s, "should have ",e
-        print zamore_energy(s)
+        print((s, "should have ",e))
+        print((zamore_energy(s)))
 
     #print cell_conc(1E6)

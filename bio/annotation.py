@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from __future__ import print_function
+from __future__ import absolute_import
 from byo.bio.tables import Importer,Exporter
 from byo.bio.gff import gff_importer,dict_from_attrstr
 from byo.bio.lazytables import NamedTupleImporter
@@ -224,7 +226,7 @@ if __name__ == "__main__":
 
     from pprint import pprint
     for loci,start,end in pileup_loci(loci):
-        print start,end
+        print(start, end)
         #pprint(loci)
         pprint(compress_combination(loci))
         

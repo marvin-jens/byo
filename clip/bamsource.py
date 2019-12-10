@@ -1,4 +1,5 @@
-from readcluster import ReadCluster
+from __future__ import absolute_import
+from .readcluster import ReadCluster
 
 
 class BAM_ClusterGenerator(object):
@@ -84,7 +85,7 @@ class BAM_ClusterGenerator(object):
         else:
             iters = [bam.fetch().__iter__() for bam in self.bams]
 
-        curr = [i.next() for i in iters]
+        curr = [next(i) for i in iters]
         names = self.names
         
         def head():
@@ -108,7 +109,7 @@ class BAM_ClusterGenerator(object):
                 self.logger.info("processing %.2fk reads/s" % (N/(dt*1000.)))
                 
             try:
-                curr[i] = iters[i].next()
+                curr[i] = next(iters[i])
             except StopIteration:
                 curr.pop(i)
                 iters.pop(i)
