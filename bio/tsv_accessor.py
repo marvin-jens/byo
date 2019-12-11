@@ -4,6 +4,12 @@ import os
 from time import time
 from logging import debug,warning,error
 
+try:
+    a = xrange(5)
+except NameError:
+    # python3
+    xrange = range
+
 class SparseFile(Accessor):
     def __init__(self,path,chrom,sense,strand_specific=False,dtype=numpy.int32,default=0,**kwargs):
         self.path = path
@@ -27,7 +33,7 @@ class SparseFile(Accessor):
 
         d = self.data
         t = self.dtype
-        for line in file(os.path.join(self.path,self.fname)):
+        for line in open(os.path.join(self.path,self.fname)):
             #if line.startswith("#"): continue
             pos,value = line.split('\t')
             d[int(pos)] = int(value)
@@ -83,12 +89,22 @@ class TSVAccessor(Accessor):
         # to the Accessor via a reference to self.data
         import numpy
         class WriteableView(numpy.ndarray):
-            def __setitem__(this,i,x):
-                super(WriteableView,this).__setitem__(i,x)
-                if x != self.default:
-                    self.data[(self.sense,i+this.start)] = x
+            def __setitem__(this, i, x):
+                super(WriteableView, this).__setitem__(i,x)
+                if isinstance(i, slice):
+                    step = i.step if i.step is not None else 1
+                    start = i.start if i.start is not None else 0
+
+                    for j, y in enumerate(x):
+                        # print(i, start, step, j, this.start, y)
+                        if y != self.default:
+                            self.data[(self.sense, start + j * step + this.start)] = y
+                else:
+                    if x != self.default:
+                        self.data[(self.sense, i + this.start)] = x
 
             def __setslice__(this,i,j,y):
+                # only used in python2
                 super(WriteableView,this).__setslice__(i,j,y)                
                 for j,x in enumerate(y):
                     if x != self.default:
@@ -121,7 +137,7 @@ class TSVAccessor(Accessor):
             return
 
         debug("# TSVAccessor.flush(%s)" % self.fname)
-        f = file(self.fname,self.mode)
+        f = open(self.fname,self.mode)
         header = "## start:int\tend:int\t%s:float\n" % self.attribute
         f.write(header)
 
