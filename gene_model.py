@@ -897,7 +897,7 @@ def _maybe_file(src):
     if hasattr(src, 'read'):
         return src
     else:
-        return file(src)
+        return open(src)
 
 def from_bed6(src, system=None):
     import numpy as np

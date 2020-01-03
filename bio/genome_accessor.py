@@ -19,9 +19,9 @@ class Singleton(type):
         return cls._instances[key]
 
 
-class RemoteCache(object):
+class RemoteCache(metaclass=Singleton):
     # # ensure that only one RemoteCache object is created per url
-    __metaclass__ = Singleton
+    # __metaclass__ = Singleton
 
     def __init__(self, urlbase):
         self.urlbase = urlbase
@@ -73,10 +73,10 @@ class RemoteCache(object):
         return Proxy()
 
 
-class GenomeCache(object):
+class GenomeCache(metaclass=Singleton):
 
     # ensure that only one GenomeCache object is created per path during run-time
-    __metaclass__ = Singleton 
+    # __metaclass__ = Singleton 
 
     def __init__(self,path):
         self.cached = {}

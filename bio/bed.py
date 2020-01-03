@@ -56,7 +56,7 @@ class BEDTrack(object):
         self.logger = logging.getLogger(f'byo.bio.BedTrack({fname})')
         import gzip
         if fname.endswith('.gz'):
-            self.bfile = gzip.GzipFile(fname, "r")
+            self.bfile = gzip.open(fname, "rt")
             self.logger.debug('Gzip compression detected')
         else:
             self.bfile = file(fname, "r")
@@ -83,7 +83,7 @@ class BEDTrack(object):
             if self._bed_type is None:
                 # determine BED format from column count:
                 pass # TODO: needs implementation
-                
+            
             cols = line.rstrip().split('\t')
             if not self.row_filter is None:
                 if not self.row_filter(cols):
