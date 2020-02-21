@@ -916,6 +916,7 @@ def from_bed6(src, system=None):
     for line in _maybe_file(src):
         chrom, start, end, name, score, strand = line.rstrip().split('\t')
         chain = ExonChain(chrom, strand, [int(start), ], [int(end), ], system=system)
+        chain.name = name
         if score == '.':
             chain.score = np.nan
         else:

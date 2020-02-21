@@ -263,6 +263,7 @@ class AnnotationServer(object):
         tx_gene_name = tx.gene_name
         self.tx_by_id[tx_name].append(tx)
         self.tx_by_gene[tx_gene_id].append(tx)
+        self.tx_by_gene[tx_gene_id.split('.')[0]].append(tx)
         self.tx_by_gene[tx_gene_name].append(tx)
         self.n_tx += 1
         strand = tx.chrom + tx.sense
