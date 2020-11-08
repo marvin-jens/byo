@@ -43,6 +43,7 @@ COMPLEMENT = {
     'N' : 'N',
     '-' : '-',
     '=' : '=',
+    '+' : '+',
 }
 
 def complement(s):
