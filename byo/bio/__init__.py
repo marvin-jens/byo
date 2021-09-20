@@ -93,24 +93,22 @@ def stat_chunks(src):
         local_options = []
 
 
+from collections import namedtuple
+
+QFA = namedtuple("qfa_tuple", "name,seq,qual")
+
+
 def qfa_chunks(lines):
     """
     Iterates over FASTQ text lines from a file like object and yields
     NamedTuple instances of the FASTQ with attributes
     qfa.name, qfa.seq, qfa.qual
     """
-    from collections import namedtuple
-
-    QFA = namedtuple("qfa_tuple", "name,seq,qual")
 
     I = lines.__iter__()
 
     try:
         while I:
-            # name = I.next().rstrip()[1:]
-            # seq = I.next().rstrip()
-            # plus = I.next().rstrip()[1:]
-            # qual = I.next().rstrip()
             name = next(I).rstrip()[1:]
             seq = next(I).rstrip()
             plus = next(I).rstrip()[1:]
