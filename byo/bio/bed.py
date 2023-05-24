@@ -1,4 +1,3 @@
-# coding=future_fstrings
 from byo.bio.lazytables import NamedTupleImporter
 import numpy as np
 import logging
@@ -16,6 +15,7 @@ def bed_importer(src, fmt=bed6_format, **kwargs):
     
 
 def transcript_from_bed6(bed, system=None):
+    from byo.gene_model import Transcript
     exon_starts = np.array([bed.start, ])
     exon_ends = np.array([bed.end, ])
     tx = Transcript(

@@ -87,11 +87,12 @@ class GenomeCache(metaclass=Singleton):
         if not name in self.cached:
             self.logger.debug("{0} not in genome cache".format(name))
             
-            # first look for 2bit file
-            self.cached[name] = Track(self.path, TwoBitAccessor, system=name, split_chrom='.')
-            if self.cached[name].no_data:
-                # not found, look for fasta or LZ compressed 
-                self.cached[name] = Track(self.path, GenomeAccessor, system=name, split_chrom='.')
+            # # first look for 2bit file
+            # self.cached[name] = Track(self.path, TwoBitAccessor, system=name, split_chrom='.')
+            # print(f"TwoBit no_data={self.cached[name].no_data}")
+            # if self.cached[name].no_data:
+            # not found, look for fasta or LZ compressed 
+            self.cached[name] = Track(self.path, GenomeAccessor, system=name, split_chrom='.')
                 
             if self.cached[name].no_data:
                 raise ValueError("could not find genome for system '{}'".format(name))
@@ -192,7 +193,7 @@ class IndexedFasta(object):
             self._f = LZFile(fname)
             idx_file = self._f
         else:
-            f = file(fname)
+            f = open(fname)
             idx_file = f
             self._f = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
 
@@ -270,9 +271,9 @@ class IndexedFasta(object):
     def load_index(self,ipath):
         self.logger.info("load_index('%s')" % ipath)
         self.chrom_stats = {}
-        for line in file(ipath):
+        for line in open(ipath):
             chrom,ofs,ldata,skip,skipchar,size = line.rstrip().split('\t')
-            self.chrom_stats[chrom] = (int(ofs),int(ldata),int(skip),skipchar[1:-1].decode('string_escape'),int(size))
+            self.chrom_stats[chrom] = (int(ofs),int(ldata),int(skip), skipchar[1:-1].encode('ascii').decode('unicode_escape'),int(size))
         
     
     def get_data(self,chrom,start,end,sense):
@@ -280,8 +281,8 @@ class IndexedFasta(object):
             self.index()
 
         ofs,ldata,skip,skip_char,size = self.chrom_stats[chrom]
-        #print "ldata",ldata
-        #print "chromstats",self.chrom_stats[chrom]
+        # print("ldata",ldata)
+        # print("chromstats",self.chrom_stats[chrom])
         pad_start = 0
         pad_end = 0
         if start < 0:
@@ -292,14 +293,15 @@ class IndexedFasta(object):
             pad_end = end - size
             end = size
 
-        l_start = start / ldata
-        l_end = end / ldata
+        l_start = int(start / ldata)
+        l_end = int(end / ldata)
         #print "lines",l_start,l_end
         ofs_start = l_start * skip + start + ofs
         ofs_end = l_end * skip + end + ofs
-        #print "ofs",ofs_start,ofs_end,ofs_end - ofs_start
+        # print("ofs",ofs_start,ofs_end,ofs_end - ofs_start)
+        # print(type(skip_char))
         
-        s = self._f[ofs_start:ofs_end].replace(skip_char,"")
+        s = self._f[ofs_start:ofs_end].decode('ascii').replace(skip_char,"")
         if pad_start or pad_end:
             s = "N"*pad_start + s + "N"*pad_end
 
