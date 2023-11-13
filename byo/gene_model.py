@@ -992,9 +992,9 @@ def transcripts_from_UCSC(fname,system=None,tx_class = None,gene_names = {},fix_
 
 if __name__ == "__main__":
         
-    ##for tx in transcripts_from_UCSC():
-    #for tx in transcripts_from_GTF("/data/BIO2/mjens/HuR/HeLa/RNASeq/cuff/stdout.combined.gtf"):
-        ##print tx.exon_count
+    import sys
+    for tx in transcripts_from_GTF(sys.stdin):
+        print(tx)
         #pass
 
     #from pprint import pprint
